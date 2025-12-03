@@ -4,6 +4,8 @@ import { ref, onMounted, onUnmounted } from 'vue'
 const monitors = ref([])
 const loading = ref(true) // 仅首次加载显示 loading
 const isVisible = ref(false)
+const isDragging = ref(false)
+const activeSliderIndex = ref(null)
 
 // 快捷亮度预设值
 const quickPresets = [0, 25, 50, 100]
@@ -26,11 +28,48 @@ const fetchMonitors = async (silent = false) => {
 }
 
 const setBrightness = async (index, value) => {
+  // 限制范围 0-100
+  value = Math.max(0, Math.min(100, Math.round(value)))
+  
   // 立即更新本地状态，实现"跟手"效果
   if (monitors.value[index]) {
-    monitors.value[index].brightness = parseInt(value)
+    monitors.value[index].brightness = value
   }
-  await window.api.setBrightness(index, parseInt(value))
+  await window.api.setBrightness(index, value)
+}
+
+// 滑块拖动逻辑
+const startDrag = (e, index) => {
+  isDragging.value = true
+  activeSliderIndex.value = index
+  updateSlider(e, index)
+  
+  window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('mouseup', handleMouseUp)
+}
+
+const handleMouseMove = (e) => {
+  if (isDragging.value && activeSliderIndex.value !== null) {
+    updateSlider(e, activeSliderIndex.value)
+  }
+}
+
+const handleMouseUp = () => {
+  isDragging.value = false
+  activeSliderIndex.value = null
+  window.removeEventListener('mousemove', handleMouseMove)
+  window.removeEventListener('mouseup', handleMouseUp)
+}
+
+const updateSlider = (e, index) => {
+  const slider = document.getElementById(`slider-${index}`)
+  if (!slider) return
+  
+  const rect = slider.getBoundingClientRect()
+  const percentage = (e.clientX - rect.left) / rect.width
+  const value = Math.max(0, Math.min(100, percentage * 100))
+  
+  setBrightness(index, value)
 }
 
 // 监听显示/隐藏命令
@@ -63,6 +102,8 @@ onMounted(() => {
 onUnmounted(() => {
   window.electron?.ipcRenderer?.off('show-quick-panel', handleShow)
   window.electron?.ipcRenderer?.off('hide-quick-panel', handleHide)
+  window.removeEventListener('mousemove', handleMouseMove)
+  window.removeEventListener('mouseup', handleMouseUp)
 })
 </script>
 
@@ -71,8 +112,7 @@ onUnmounted(() => {
     <Transition name="slide-fade">
       <div v-if="isVisible" class="quick-panel">
         <div class="panel-header">
-          <span class="icon">☀️</span>
-          <h2>亮度</h2>
+          <h2>显示器</h2>
         </div>
         
         <div v-if="loading" class="loading">
@@ -81,21 +121,43 @@ onUnmounted(() => {
         
         <div v-else class="monitors-list">
           <div v-for="(m, idx) in monitors" :key="idx" class="monitor-item">
-            <div class="monitor-info">
-              <span class="monitor-name">{{ m.name }}</span>
-              <span class="brightness-value">{{ m.brightness }}%</span>
+            <div class="monitor-header">
+              <span class="name">{{ m.name }}</span>
+              
+              <!-- 迷你快捷按钮组 -->
+              <div class="mini-actions">
+                <button 
+                  v-for="preset in quickPresets" 
+                  :key="preset"
+                  :class="['mini-btn', { 'active': Math.abs(m.brightness - preset) < 5 }]"
+                  @click="setBrightness(idx, preset)"
+                  :title="`设置亮度为 ${preset}%`"
+                >
+                  {{ preset }}
+                </button>
+              </div>
+
+              <span class="value">{{ m.brightness }}%</span>
             </div>
             
-            <!-- 快捷按钮 -->
-            <div class="quick-buttons">
-              <button 
-                v-for="preset in quickPresets" 
-                :key="preset"
-                :class="['quick-btn', { 'active': m.brightness === preset }]"
-                @click="setBrightness(idx, preset)"
-              >
-                {{ preset }}%
-              </button>
+            <!-- macOS 风格滑块 -->
+            <div 
+              :id="`slider-${idx}`"
+              class="macos-slider" 
+              @mousedown="e => startDrag(e, idx)"
+            >
+              <!-- 背景层 -->
+              <div class="slider-bg"></div>
+              <!-- 填充层 -->
+              <div class="slider-fill" :style="{ width: m.brightness + '%' }"></div>
+              <!-- 图标层 -->
+              <div class="slider-icon-container">
+                <div class="slider-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 2c1.65 0 3 1.35 3 3s-1.35 3-3 3-3-1.35-3-3 1.35-3 3-3zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 000 1.41.996.996 0 001.41 0l1.06-1.06c.39-.39.39-1.03 0-1.41s-1.03-.39-1.41 0l-1.06 1.06z"/>
+                  </svg>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -139,46 +201,38 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px; /* 添加内边距防止圆角被裁切 */
+  padding: 8px;
 }
 
 .quick-panel {
   width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(60px) saturate(150%);
-  -webkit-backdrop-filter: blur(60px) saturate(150%);
-  border-radius: 16px;
-  padding: 14px 16px;
+  /* 玻璃拟态背景 */
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-radius: 18px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   color: #1d1d1f;
-  box-shadow: 
-    inset 0 0 0 1px rgba(255, 255, 255, 0.6); /* 仅保留内部高光边框，移除外部阴影 */
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  transform-origin: bottom center; /* 动画原点 */
+  /* 仅保留内部高光，移除外部阴影 */
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transform-origin: bottom center;
 }
 
 .panel-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.panel-header .icon {
-  font-size: 18px;
-  opacity: 0.8;
+  padding-left: 4px;
 }
 
 .panel-header h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: -0.3px;
-  opacity: 0.8;
+  opacity: 0.6;
+  letter-spacing: -0.2px;
 }
 
 .loading {
@@ -191,9 +245,9 @@ html, body {
 .spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(139, 92, 246, 0.2);
+  border: 2px solid rgba(0, 0, 0, 0.1);
   border-radius: 50%;
-  border-top-color: #8B5CF6;
+  border-top-color: #000;
   animation: spin 0.8s linear infinite;
 }
 
@@ -204,7 +258,7 @@ html, body {
 .monitors-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .monitor-item {
@@ -213,93 +267,161 @@ html, body {
   gap: 8px;
 }
 
-.monitor-info {
+.monitor-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  padding: 0 2px;
+  height: 20px;
 }
 
-.monitor-name {
-  flex: 1;
-  font-size: 12px;
+.name {
+  font-size: 13px;
   font-weight: 500;
-  opacity: 0.6;
+  opacity: 0.8;
   letter-spacing: -0.1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px; /* 防止名称过长挤压按钮 */
 }
 
-.brightness-value {
-  font-size: 13px;
-  font-weight: 700;
-  color: #8B5CF6;
-  min-width: 40px;
-  text-align: right;
-  letter-spacing: -0.3px;
-}
-
-/* 快捷按钮 */
-.quick-buttons {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-}
-
-.quick-btn {
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 10px;
-  height: 36px;
-  color: #374151;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  letter-spacing: -0.2px;
+/* 迷你快捷按钮组 */
+.mini-actions {
   display: flex;
-  align-items: center;
+  gap: 4px;
+  margin: 0 8px;
+  flex: 1;
   justify-content: center;
 }
 
-.quick-btn:hover {
-  background: rgba(255, 255, 255, 0.9);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+.mini-btn {
+  width: 28px;
+  height: 18px;
+  border-radius: 9px; /* 胶囊形 */
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.4);
+  color: #333;
+  font-size: 10px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
 }
 
-.quick-btn.active {
-  background: linear-gradient(135deg, #A78BFA 0%, #C084FC 100%);
+.mini-btn:hover {
+  background: rgba(255, 255, 255, 0.8);
+  transform: scale(1.05);
+}
+
+.mini-btn.active {
+  background: #333;
   color: white;
-  border: none;
-  box-shadow: 
-    0 4px 12px rgba(167, 139, 250, 0.3),
-    0 2px 6px rgba(167, 139, 250, 0.2);
+  border-color: transparent;
+}
+
+.value {
+  font-size: 13px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+  min-width: 32px;
+  text-align: right;
 }
 
-.quick-btn:active {
-  transform: scale(0.96);
+/* macOS 风格滑块 */
+.macos-slider {
+  position: relative;
+  width: 100%;
+  height: 28px;
+  border-radius: 14px;
+  cursor: pointer;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.05);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: transform 0.1s;
 }
 
-/* 暗色模式 */
+.macos-slider:active {
+  transform: scale(0.99);
+}
+
+.slider-bg {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 1;
+}
+
+.slider-fill {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  background: white;
+  z-index: 2;
+  transition: width 0.1s linear;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+}
+
+.slider-icon-container {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.slider-icon {
+  color: #333;
+  display: flex;
+  opacity: 0.7;
+  mix-blend-mode: overlay; 
+}
+
+/* 暗色模式适配 */
 @media (prefers-color-scheme: dark) {
   .quick-panel {
-    background: rgba(40, 40, 45, 0.9);
-    color: #f5f5f7;
+    background: rgba(40, 40, 45, 0.7);
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.05);
+  }
+  
+  .mini-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: #eee;
+    border-color: rgba(255, 255, 255, 0.05);
+  }
+  
+  .mini-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  
+  .mini-btn.active {
+    background: #fff;
+    color: #000;
+  }
+  
+  .macos-slider {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  
+  .slider-fill {
+    background: white;
+  }
+  
+  .slider-icon {
+    color: #000;
+    mix-blend-mode: screen;
+  }
+  
+  .spinner {
     border-color: rgba(255, 255, 255, 0.1);
-  }
-  
-  .monitor-name {
-    opacity: 0.7;
-  }
-  
-  .quick-btn {
-    background: rgba(60, 60, 65, 0.6);
-    color: #e5e5e7;
-    border-color: rgba(255, 255, 255, 0.08);
-  }
-  
-  .quick-btn:hover {
-    background: rgba(80, 80, 85, 0.9);
+    border-top-color: #fff;
   }
 }
 </style>
