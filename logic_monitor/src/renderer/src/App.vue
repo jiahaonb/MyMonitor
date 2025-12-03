@@ -1,133 +1,129 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import TitleBar from './components/TitleBar.vue'
+import BrightnessPanel from './components/BrightnessPanel.vue'
+import ConfigPanel from './components/ConfigPanel.vue'
+import { configManager } from './utils/config.js'
 
-const monitors = ref([])
-const loading = ref(false)
-const showFineTune = ref(false)
+const currentTab = ref('brightness')
+const panelOpacity = ref(0.9) // 初始透明度90%
+const isVisible = ref(false) // 控制动画显示
 
-// 生成 5% - 100% 的预设值
-const presets = Array.from({ length: 20 }, (_, i) => (i + 1) * 5)
+const tabs = [
+  { id: 'brightness', label: '亮度', icon: '☀️' },
+  { id: 'config', label: '配置', icon: '⚙️' }
+]
 
-function debounce(fn, delay) {
-  let timer = null
-  return function (...args) {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      fn.apply(this, args)
-    }, delay)
+// 监听配置更新
+const handleConfigUpdate = (event) => {
+  if (event.detail.panelOpacity !== undefined) {
+    panelOpacity.value = event.detail.panelOpacity
   }
 }
 
-const fetchMonitors = async () => {
-  loading.value = true
-  try {
-    const res = await window.api.getMonitors()
-    if (res.status === 'success') monitors.value = res.data
-  } catch (err) { console.error(err) } 
-  finally { loading.value = false }
+// 监听显示/隐藏命令
+const handleShow = () => {
+  isVisible.value = true
 }
 
-const setBrightness = async (index, value) => {
-  monitors.value[index].brightness = parseInt(value)
-  await window.api.setBrightness(index, parseInt(value))
+const handleHide = () => {
+  isVisible.value = false
+  // 等待动画结束后通知主进程隐藏窗口
+  setTimeout(() => {
+    window.electron?.ipcRenderer?.send('settings-window-hide-finished')
+  }, 350)
 }
 
-const debouncedSetBrightness = debounce((index, value) => {
-  setBrightness(index, value)
-}, 300)
+onMounted(async () => {
+  const config = await configManager.loadConfig()
+  panelOpacity.value = config.panelOpacity
+  window.addEventListener('config-updated', handleConfigUpdate)
+  
+  // 监听主进程消息
+  window.electron?.ipcRenderer?.on('show-settings-window', handleShow)
+  window.electron?.ipcRenderer?.on('hide-settings-window', handleHide)
+  
+  // 稍微延迟显示以触发初始动画
+  setTimeout(() => { isVisible.value = true }, 100)
+})
 
-const onSliderInput = (index, value) => {
-  monitors.value[index].brightness = parseInt(value)
-  debouncedSetBrightness(index, value)
-}
-
-onMounted(() => {
-  fetchMonitors()
+onUnmounted(() => {
+  window.removeEventListener('config-updated', handleConfigUpdate)
+  window.electron?.ipcRenderer?.off('show-settings-window', handleShow)
+  window.electron?.ipcRenderer?.off('hide-settings-window', handleHide)
 })
 </script>
 
 <template>
   <div class="universe">
-    <!-- 主玻璃面板 -->
-    <div class="liquid-card">
-      
-      <!-- 顶部 -->
-      <div class="header">
-        <div class="header-text">
-          <h1>Display<span class="highlight">OS</span></h1>
-          <p v-if="!loading" class="status-badge">Connected</p>
-        </div>
-        <button @click="fetchMonitors" class="glass-btn icon-btn">
-          <span class="spin-icon">↻</span>
-        </button>
-      </div>
-
-      <!-- 加载中 -->
-      <div v-if="loading" class="loading-zone">
-        <div class="loader"></div>
-      </div>
-      
-      <!-- 列表内容 -->
-      <div v-else class="scroll-container">
-        <div v-for="(m, idx) in monitors" :key="idx" class="monitor-section">
-          
-          <div class="monitor-label">
-            <span class="monitor-icon">🖥</span>
-            <span class="name">{{ m.name }}</span>
-            <span class="value-tag">{{ m.brightness }}%</span>
+    <Transition name="zoom">
+      <!-- 主玻璃面板 -->
+      <div v-if="isVisible" class="liquid-card" :style="{ background: `rgba(255, 255, 255, ${panelOpacity})` }">
+        
+        <!-- 自定义标题栏 -->
+        <TitleBar />
+        
+        <!-- 顶部标题 -->
+        <div class="header">
+          <div class="header-text">
+            <h1>显示器<span class="highlight">控制中心</span></h1>
+            <p class="status-badge">已连接</p>
           </div>
+        </div>
 
-          <!-- 液态按钮网格 -->
-          <div class="grid-system">
+        <!-- 主要内容区 -->
+        <div class="main-content">
+          <!-- 左侧导航栏 -->
+          <div class="sidebar">
             <button 
-              v-for="p in presets" 
-              :key="p"
-              class="liquid-chip"
-              :class="{ 'active': m.brightness === p || (m.brightness > p - 5 && m.brightness < p) }"
-              @click="setBrightness(idx, p)"
+              v-for="tab in tabs" 
+              :key="tab.id"
+              :class="['nav-item', { active: currentTab === tab.id }]"
+              @click="currentTab = tab.id"
             >
-              {{ p }}
+              <span class="nav-icon">{{ tab.icon }}</span>
+              <span class="nav-label">{{ tab.label }}</span>
             </button>
           </div>
 
-          <!-- 微调触发器 -->
-          <div class="expander" @click="showFineTune = !showFineTune">
-            <span>Precise Control</span>
-            <span class="chevron" :class="{ rotated: showFineTune }">›</span>
+          <!-- 右侧内容区 -->
+          <div class="content-area">
+            <BrightnessPanel v-if="currentTab === 'brightness'" />
+            <ConfigPanel v-if="currentTab === 'config'" />
           </div>
-
-          <!-- 隐藏式滑动条 -->
-          <div class="slider-drawer" :class="{ open: showFineTune }">
-            <div class="slider-track-container">
-              <input 
-                type="range" 
-                min="0" 
-                max="100" 
-                :value="m.brightness" 
-                @input="e => onSliderInput(idx, e.target.value)"
-              />
-            </div>
-          </div>
-
         </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
 
 <style>
-/* --- 全局重置 --- */
-* { box-sizing: border-box; }
-body, html {
-  margin: 0; padding: 0;
-  height: 100vh;
-  /* 确保这里绝对透明，不要有任何颜色 */
-  background: transparent; 
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
-  overflow: hidden;
-  user-select: none;
+/* 全局样式 - 确保完全透明背景 */
+html, body {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  overflow: hidden !important;
 }
 
+#app {
+  background: transparent !important;
+}
+
+/* 缩放动画 */
+.zoom-enter-active,
+.zoom-leave-active {
+  transition: all 0.35s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.zoom-enter-from,
+.zoom-leave-to {
+  opacity: 0;
+  transform: scale(0.92);
+}
+</style>
+
+<style scoped>
 /* --- 宇宙背景层 (Universe) --- */
 .universe {
   position: relative;
@@ -136,39 +132,37 @@ body, html {
   display: flex;
   justify-content: center;
   align-items: center;
-  /* 完全透明背景 */
   background: transparent; 
 }
 
-/* 移除了背景光球 - 用户不需要 */
-
 /* --- 核心：液态玻璃卡片 (Liquid Card) - macOS 风格 --- */
 .liquid-card {
-  width: 88%;
-  max-width: 420px;
-  height: 85%; /* 减少高度确保圆角不被裁切 */
+  width: 96%;
+  max-width: 820px;
+  height: 88%; /* 稍微减小高度以留出更多边距 */
   max-height: 580px;
-  margin: 20px 0; /* 添加上下边距确保圆角完整显示 */
-  /* macOS 风格的玻璃背景 - 更多白色，更少颜色 */
-  background: rgba(255, 255, 255, 0.65);
-  /* 增强模糊效果，减少饱和度 */
+  margin: 40px auto 20px; /* 增加顶部边距到 40px */
   backdrop-filter: blur(60px) saturate(150%); 
   -webkit-backdrop-filter: blur(60px) saturate(150%);
   
-  border-radius: 28px; /* 稍微减少圆角，更接近 macOS */
-  border: 1.5px solid rgba(255, 255, 255, 0.6);
-  /* 柔和的阴影 */
+  border-radius: 24px; /* 恢复较大圆角 */
+  /* 增强的玻璃质感边框 */
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.7);
+  border-left: 1px solid rgba(255, 255, 255, 0.6);
+  
+  /* 多层阴影创造深度感 */
   box-shadow: 
-    0 24px 60px rgba(0, 0, 0, 0.08),
-    0 8px 16px rgba(0, 0, 0, 0.04),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.5),
-    0 0 0 0.5px rgba(0, 0, 0, 0.03);
+    0 20px 40px -10px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset,
+    0 0 20px rgba(255, 255, 255, 0.2) inset;
   
   display: flex;
   flex-direction: column;
-  padding: 24px;
+  padding: 0; /* 移除 padding，由子元素自己控制 */
   color: #1d1d1f;
-  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: background 0.3s ease;
+  overflow: hidden; /* 确保内容不超出圆角 */
 }
 
 /* --- 头部设计 --- */
@@ -176,10 +170,11 @@ body, html {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
+  margin-bottom: 16px;
+  padding: 0 24px 16px 24px; /* 添加左右内边距 */
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
+
 h1 {
   margin: 0;
   font-size: 26px;
@@ -187,16 +182,18 @@ h1 {
   letter-spacing: -0.6px;
   color: #1d1d1f;
 }
+
 .highlight {
-  background: linear-gradient(135deg, #A18CD1 0%, #FBC2EB 100%); /* 柔和紫粉渐变 */
+  background: linear-gradient(135deg, #A18CD1 0%, #FBC2EB 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-left: 4px;
 }
+
 .status-badge {
   font-size: 11px;
-  color: rgba(0,0,0,0.45);
-  background: rgba(0,0,0,0.04);
+  color: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.04);
   padding: 3px 10px;
   border-radius: 12px;
   display: inline-block;
@@ -205,224 +202,92 @@ h1 {
   letter-spacing: 0.3px;
 }
 
-.glass-btn {
-  background: rgba(255,255,255,0.4);
-  border: 1px solid rgba(0,0,0,0.06);
-  width: 38px; height: 38px;
-  border-radius: 50%;
+/* --- 主要内容区 --- */
+.main-content {
+  flex: 1;
   display: flex;
+  gap: 16px;
+  min-height: 0;
+  padding: 0 24px 24px 24px; /* 添加内边距 */
+}
+
+/* --- 侧边栏 --- */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100px; /* 增加宽度以适配横向布局 */
+  flex-shrink: 0;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  gap: 6px;
+  padding: 12px 8px;
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  color: #1d1d1f;
-}
-.glass-btn:hover {
-  background: rgba(255,255,255,0.9);
-  transform: rotate(90deg) scale(1.08);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-  border-color: rgba(0,0,0,0.1);
-}
-
-/* --- 列表容器 --- */
-.scroll-container {
-  flex: 1;
-  overflow-y: auto;
-  padding-right: 4px;
-  /* 自定义滚动条 - macOS 风格 */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0,0,0,0.15) transparent;
-}
-.scroll-container::-webkit-scrollbar { 
-  width: 6px; 
-}
-.scroll-container::-webkit-scrollbar-track { 
-  background: transparent; 
-}
-.scroll-container::-webkit-scrollbar-thumb { 
-  background: rgba(0,0,0,0.15); 
-  border-radius: 3px;
-}
-.scroll-container::-webkit-scrollbar-thumb:hover { 
-  background: rgba(0,0,0,0.25); 
-}
-
-/* --- 显示器条目 --- */
-.monitor-section {
-  margin-bottom: 28px;
-}
-.monitor-label {
-  display: flex;
-  align-items: center;
-  margin-bottom: 14px;
-  padding: 0 2px;
-}
-.monitor-icon { 
-  font-size: 22px; 
-  margin-right: 10px; 
-  opacity: 0.7;
-  filter: grayscale(0.2);
-}
-.name { 
-  font-weight: 600; 
-  font-size: 15px; 
-  opacity: 0.75; 
-  flex: 1; 
-  letter-spacing: -0.2px;
-}
-.value-tag {
-  font-weight: 700;
-  font-size: 15px;
-  color: #8B5CF6; /* 柔和的紫色 */
-  background: rgba(139, 92, 246, 0.08);
-  padding: 5px 12px;
-  border-radius: 10px;
-  letter-spacing: -0.3px;
-}
-
-/* --- 液态芯片按钮 (Liquid Chips) - macOS 风格 --- */
-.grid-system {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-}
-
-.liquid-chip {
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 11px;
-  height: 40px;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   color: #374151;
-  font-size: 13.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-  backdrop-filter: blur(10px);
-  letter-spacing: -0.2px;
 }
 
-.liquid-chip:hover {
-  background: rgba(255, 255, 255, 0.85);
-  transform: translateY(-2px) scale(1.04);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-color: rgba(0, 0, 0, 0.12);
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.6);
+  transform: translateX(2px);
 }
 
-.liquid-chip.active {
-  /* 激活态：柔和的紫色渐变 */
+.nav-item.active {
   background: linear-gradient(135deg, #A78BFA 0%, #C084FC 100%);
   color: white;
   border: none;
-  box-shadow: 
-    0 6px 20px rgba(167, 139, 250, 0.3),
-    0 2px 8px rgba(167, 139, 250, 0.2);
-  transform: scale(1.03);
-  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.3);
 }
 
-/* --- 折叠微调区 --- */
-.expander {
-  margin-top: 14px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: rgba(0,0,0,0.35);
-  cursor: pointer;
-  padding: 8px;
-  transition: color 0.2s;
+.nav-icon {
+  font-size: 24px;
+}
+
+.nav-label {
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.2px;
 }
-.expander:hover { color: #8B5CF6; }
-.chevron { 
-  font-size: 18px; 
-  font-weight: 700; 
-  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-.chevron.rotated { transform: rotate(90deg); }
 
-.slider-drawer {
-  height: 0;
-  opacity: 0;
-  overflow: hidden;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.slider-drawer.open {
-  height: 44px;
-  opacity: 1;
-  margin-top: 8px;
-}
-
-/* --- 滑动条美化 (macOS 风格) --- */
-input[type=range] {
-  -webkit-appearance: none;
-  width: 100%;
-  background: transparent;
-}
-input[type=range]::-webkit-slider-runnable-track {
-  width: 100%;
-  height: 6px;
-  background: rgba(0,0,0,0.08);
-  border-radius: 3px;
-}
-input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  height: 24px; width: 24px;
-  border-radius: 50%;
-  background: white;
-  box-shadow: 
-    0 2px 8px rgba(0,0,0,0.15),
-    0 1px 3px rgba(0,0,0,0.1);
-  margin-top: -9px;
-  cursor: grab;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  border: 0.5px solid rgba(0,0,0,0.04);
-}
-input[type=range]::-webkit-slider-thumb:hover {
-  transform: scale(1.1);
-  box-shadow: 
-    0 4px 12px rgba(0,0,0,0.2),
-    0 2px 6px rgba(0,0,0,0.15);
-}
-input[type=range]::-webkit-slider-thumb:active {
-  transform: scale(1.15);
-  cursor: grabbing;
-}
-
-/* --- 加载动画 - macOS 风格 --- */
-.loading-zone {
+/* --- 内容区域 --- */
+.content-area {
   flex: 1;
   display: flex;
-  justify-content: center;
-  align-items: center;
+  flex-direction: column;
+  min-width: 0;
 }
-.loader {
-  width: 44px; height: 44px;
-  border: 3px solid rgba(139, 92, 246, 0.12);
-  border-radius: 50%;
-  border-top-color: #8B5CF6;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
 
-/* --- Windows 特定优化 --- */
+/* --- 暗色模式 --- */
 @media (prefers-color-scheme: dark) {
   .liquid-card {
-    background: rgba(30, 30, 35, 0.7);
     border-color: rgba(255, 255, 255, 0.12);
   }
-  h1, .name, .glass-btn {
+  
+  h1 {
     color: #f5f5f7;
   }
-  .liquid-chip {
-    background: rgba(60, 60, 65, 0.5);
+  
+  .status-badge {
+    color: rgba(255, 255, 255, 0.45);
+    background: rgba(255, 255, 255, 0.08);
+  }
+  
+  .nav-item {
+    background: rgba(60, 60, 65, 0.4);
     color: #e5e5e7;
     border-color: rgba(255, 255, 255, 0.08);
   }
-  .liquid-chip:hover {
-    background: rgba(80, 80, 85, 0.8);
+  
+  .nav-item:hover {
+    background: rgba(80, 80, 85, 0.6);
   }
 }
 </style>

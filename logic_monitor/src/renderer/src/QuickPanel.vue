@@ -1,64 +1,106 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const monitors = ref([])
-const loading = ref(false)
+const loading = ref(true) // 仅首次加载显示 loading
+const isVisible = ref(false)
 
 // 快捷亮度预设值
 const quickPresets = [0, 25, 50, 100]
 
-const fetchMonitors = async () => {
-  loading.value = true
+const fetchMonitors = async (silent = false) => {
+  if (!silent && monitors.value.length === 0) {
+    loading.value = true
+  }
+  
   try {
     const res = await window.api.getMonitors()
-    if (res.status === 'success') monitors.value = res.data
-  } catch (err) { console.error(err) } 
-  finally { loading.value = false }
+    if (res.status === 'success') {
+      monitors.value = res.data
+    }
+  } catch (err) { 
+    console.error(err) 
+  } finally { 
+    loading.value = false 
+  }
 }
 
 const setBrightness = async (index, value) => {
-  monitors.value[index].brightness = parseInt(value)
+  // 立即更新本地状态，实现"跟手"效果
+  if (monitors.value[index]) {
+    monitors.value[index].brightness = parseInt(value)
+  }
   await window.api.setBrightness(index, parseInt(value))
 }
 
+// 监听显示/隐藏命令
+const handleShow = () => {
+  isVisible.value = true
+  // 静默刷新数据，不显示 loading
+  fetchMonitors(true)
+}
+
+const handleHide = () => {
+  isVisible.value = false
+  // 等待动画结束后通知主进程隐藏窗口
+  setTimeout(() => {
+    window.electron?.ipcRenderer?.send('quick-panel-hide-finished')
+  }, 300) // 对应 CSS transition 时间
+}
+
 onMounted(() => {
+  // 初始加载
   fetchMonitors()
+  
+  // 监听主进程消息
+  window.electron?.ipcRenderer?.on('show-quick-panel', handleShow)
+  window.electron?.ipcRenderer?.on('hide-quick-panel', handleHide)
+  
+  // 稍微延迟显示以触发初始动画（如果是首次加载）
+  setTimeout(() => { isVisible.value = true }, 100)
+})
+
+onUnmounted(() => {
+  window.electron?.ipcRenderer?.off('show-quick-panel', handleShow)
+  window.electron?.ipcRenderer?.off('hide-quick-panel', handleHide)
 })
 </script>
 
 <template>
   <div class="quick-panel-wrapper">
-    <div class="quick-panel">
-      <div class="panel-header">
-        <span class="icon">☀️</span>
-        <h2>Brightness</h2>
-      </div>
-      
-      <div v-if="loading" class="loading">
-        <div class="spinner"></div>
-      </div>
-      
-      <div v-else class="monitors-list">
-        <div v-for="(m, idx) in monitors" :key="idx" class="monitor-item">
-          <div class="monitor-info">
-            <span class="monitor-name">{{ m.name }}</span>
-            <span class="brightness-value">{{ m.brightness }}%</span>
-          </div>
-          
-          <!-- 快捷按钮 -->
-          <div class="quick-buttons">
-            <button 
-              v-for="preset in quickPresets" 
-              :key="preset"
-              :class="['quick-btn', { 'active': m.brightness === preset }]"
-              @click="setBrightness(idx, preset)"
-            >
-              {{ preset }}%
-            </button>
+    <Transition name="slide-fade">
+      <div v-if="isVisible" class="quick-panel">
+        <div class="panel-header">
+          <span class="icon">☀️</span>
+          <h2>亮度</h2>
+        </div>
+        
+        <div v-if="loading" class="loading">
+          <div class="spinner"></div>
+        </div>
+        
+        <div v-else class="monitors-list">
+          <div v-for="(m, idx) in monitors" :key="idx" class="monitor-item">
+            <div class="monitor-info">
+              <span class="monitor-name">{{ m.name }}</span>
+              <span class="brightness-value">{{ m.brightness }}%</span>
+            </div>
+            
+            <!-- 快捷按钮 -->
+            <div class="quick-buttons">
+              <button 
+                v-for="preset in quickPresets" 
+                :key="preset"
+                :class="['quick-btn', { 'active': m.brightness === preset }]"
+                @click="setBrightness(idx, preset)"
+              >
+                {{ preset }}%
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
 
@@ -77,6 +119,18 @@ html, body {
 </style>
 
 <style scoped>
+/* 动画样式 */
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(15px) scale(0.96);
+}
+
 /* 外层包装，确保完全透明 */
 .quick-panel-wrapper {
   width: 100%;
@@ -100,10 +154,9 @@ html, body {
   flex-direction: column;
   color: #1d1d1f;
   box-shadow: 
-    0 20px 50px rgba(0, 0, 0, 0.12),
-    0 8px 20px rgba(0, 0, 0, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.6); /* 仅保留内部高光边框，移除外部阴影 */
   border: 1px solid rgba(255, 255, 255, 0.3);
+  transform-origin: bottom center; /* 动画原点 */
 }
 
 .panel-header {

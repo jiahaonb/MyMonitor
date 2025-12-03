@@ -3,12 +3,20 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for renderer
 const api = {
-  // 获取显示器列表
+  // 显示器控制
   getMonitors: () => ipcRenderer.invoke('get-monitors'),
-  // 设置亮度
   setBrightness: (index, value) => ipcRenderer.invoke('set-brightness', index, value),
-  // 设置输入源
-  setInput: (index, source) => ipcRenderer.invoke('set-input', index, source)
+  setInput: (index, source) => ipcRenderer.invoke('set-input', index, source),
+
+  // 配置管理
+  getConfig: () => ipcRenderer.invoke('get-config'),
+  saveConfig: (config) => ipcRenderer.invoke('save-config', config),
+  getConfigPath: () => ipcRenderer.invoke('get-config-path'),
+
+  // 窗口控制
+  windowMinimize: () => ipcRenderer.send('window-minimize'),
+  windowToggleAlwaysOnTop: (flag) => ipcRenderer.send('window-toggle-always-on-top', flag),
+  windowClose: () => ipcRenderer.send('window-close')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

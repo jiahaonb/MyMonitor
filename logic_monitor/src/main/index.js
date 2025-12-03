@@ -3,10 +3,39 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { execFile, spawn } from 'child_process'
+import fs from 'fs'
 
 let quickPanel = null // 快捷面板窗口
 let settingsWindow = null // 设置窗口
 let tray = null // 托盘
+let lastHideTime = 0 // 上次隐藏时间
+
+// 配置文件路径
+const configPath = join(app.getPath('userData'), 'config.json')
+
+// 读取配置
+function loadConfig() {
+  try {
+    if (fs.existsSync(configPath)) {
+      const data = fs.readFileSync(configPath, 'utf-8')
+      return JSON.parse(data)
+    }
+  } catch (e) {
+    console.error('读取配置失败:', e)
+  }
+  return null
+}
+
+// 保存配置
+function saveConfig(config) {
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+    return true
+  } catch (e) {
+    console.error('保存配置失败:', e)
+    return false
+  }
+}
 
 // 创建快捷亮度面板（左键点击托盘显示）
 function createQuickPanel() {
@@ -20,9 +49,8 @@ function createQuickPanel() {
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true, // 始终在最前
-    hasShadow: true,
+    hasShadow: false, // 移除系统窗口阴影
     roundedCorners: true,
-    ...(process.platform === 'darwin' ? { vibrancy: 'popover' } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -33,7 +61,10 @@ function createQuickPanel() {
 
   // 点击外部时隐藏窗口
   quickPanel.on('blur', () => {
-    quickPanel.hide()
+    // 发送隐藏动画指令
+    if (quickPanel && quickPanel.isVisible()) {
+      quickPanel.webContents.send('hide-quick-panel')
+    }
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -48,17 +79,18 @@ function createQuickPanel() {
 // 创建设置窗口（右键菜单"设置"打开）
 function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
-    width: 420,
-    height: 650,
+    width: 850,
+    height: 620,
+    minWidth: 750,
+    minHeight: 550,
     show: false,
-    frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
-    resizable: false,
-    skipTaskbar: true,
+    frame: false, // 无边框，使用自定义标题栏
+    transparent: true, // 恢复透明背景
+    backgroundColor: '#00000000', // 完全透明
+    resizable: true, // 允许调整大小
+    skipTaskbar: false, // 显示在任务栏
     hasShadow: true,
     roundedCorners: true,
-    ...(process.platform === 'darwin' ? { vibrancy: 'sidebar' } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -69,6 +101,7 @@ function createSettingsWindow() {
 
   settingsWindow.on('ready-to-show', () => {
     settingsWindow.show()
+    settingsWindow.focus() // 确保窗口获得焦点
   })
 
   settingsWindow.webContents.setWindowOpenHandler((details) => {
@@ -96,9 +129,11 @@ function createTray() {
       click: () => {
         if (!settingsWindow || settingsWindow.isDestroyed()) {
           createSettingsWindow()
-        } else {
-          settingsWindow.show()
         }
+        // 显示窗口并播放动画
+        settingsWindow.show()
+        settingsWindow.focus()
+        settingsWindow.webContents.send('show-settings-window')
       }
     },
     { type: 'separator' },
@@ -114,8 +149,14 @@ function createTray() {
       createQuickPanel()
     }
 
+    // 如果刚刚因为 blur 而隐藏，则不要立即重新显示
+    if (Date.now() - lastHideTime < 300) { // 稍微增加时间以匹配动画
+      return
+    }
+
     if (quickPanel.isVisible()) {
-      quickPanel.hide()
+      // 发送隐藏指令，等待动画结束
+      quickPanel.webContents.send('hide-quick-panel')
     } else {
       // 计算窗口位置
       const { x, y, width: trayWidth, height: trayHeight } = bounds
@@ -145,6 +186,8 @@ function createTray() {
 
       quickPanel.setPosition(posX, posY)
       quickPanel.show()
+      // 发送显示指令
+      quickPanel.webContents.send('show-quick-panel')
     }
   })
 }
@@ -157,6 +200,51 @@ app.whenReady().then(() => {
   })
 
   ipcMain.on('ping', () => console.log('pong'))
+
+  // 配置文件 IPC 处理
+  ipcMain.handle('get-config', () => {
+    return loadConfig()
+  })
+
+  ipcMain.handle('save-config', (event, config) => {
+    return saveConfig(config)
+  })
+
+  ipcMain.handle('get-config-path', () => {
+    return configPath
+  })
+
+  // 窗口控制 IPC 处理
+  ipcMain.on('window-minimize', () => {
+    if (settingsWindow) settingsWindow.minimize()
+  })
+
+  ipcMain.on('window-toggle-always-on-top', (event, flag) => {
+    if (settingsWindow) {
+      settingsWindow.setAlwaysOnTop(flag)
+    }
+  })
+
+  // 拦截关闭操作，先播放动画
+  ipcMain.on('window-close', () => {
+    if (settingsWindow) {
+      settingsWindow.webContents.send('hide-settings-window')
+    }
+  })
+
+  // 动画结束后真正隐藏/关闭
+  ipcMain.on('settings-window-hide-finished', () => {
+    if (settingsWindow) {
+      settingsWindow.hide() // 或者 .close()，取决于需求，这里用 hide 保持后台运行
+    }
+  })
+
+  ipcMain.on('quick-panel-hide-finished', () => {
+    if (quickPanel) {
+      quickPanel.hide()
+      lastHideTime = Date.now()
+    }
+  })
 
   // 创建快捷面板和托盘
   createQuickPanel()
