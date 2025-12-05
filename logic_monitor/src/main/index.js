@@ -89,7 +89,7 @@ function createSettingsWindow() {
     backgroundColor: '#00000000', // 完全透明
     resizable: true, // 允许调整大小
     skipTaskbar: false, // 显示在任务栏
-    hasShadow: true,
+    hasShadow: false,
     roundedCorners: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -147,11 +147,6 @@ function createTray() {
   tray.on('click', (event, bounds) => {
     if (!quickPanel || quickPanel.isDestroyed()) {
       createQuickPanel()
-    }
-
-    // 如果刚刚因为 blur 而隐藏，则不要立即重新显示
-    if (Date.now() - lastHideTime < 300) { // 稍微增加时间以匹配动画
-      return
     }
 
     if (quickPanel.isVisible()) {
@@ -242,7 +237,55 @@ app.whenReady().then(() => {
   ipcMain.on('quick-panel-hide-finished', () => {
     if (quickPanel) {
       quickPanel.hide()
-      lastHideTime = Date.now()
+    }
+  })
+
+  // 处理窗口调整大小
+  let resizeInterval = null
+  ipcMain.on('window-resize-start', (event, direction) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+
+    const startCursor = screen.getCursorScreenPoint()
+    const startBounds = win.getBounds()
+
+    // 清除旧的定时器
+    if (resizeInterval) clearInterval(resizeInterval)
+
+    resizeInterval = setInterval(() => {
+      const currentCursor = screen.getCursorScreenPoint()
+      const deltaX = currentCursor.x - startCursor.x
+      const deltaY = currentCursor.y - startCursor.y
+
+      let newBounds = { ...startBounds }
+
+      if (direction.includes('right')) newBounds.width += deltaX
+      if (direction.includes('left')) {
+        newBounds.x += deltaX
+        newBounds.width -= deltaX
+      }
+      if (direction.includes('bottom')) newBounds.height += deltaY
+      if (direction.includes('top')) {
+        newBounds.y += deltaY
+        newBounds.height -= deltaY
+      }
+
+      // 最小尺寸限制
+      if (newBounds.width < 750) newBounds.width = 750
+      if (newBounds.height < 550) newBounds.height = 550
+
+      win.setBounds(newBounds)
+
+      // 简单的鼠标释放检测（不完美，但能用）
+      // 理想情况应该使用全局鼠标钩子，但这里用简单的轮询检测鼠标左键状态比较复杂
+      // 替代方案：前端监听 mouseup 发送停止指令
+    }, 1000 / 60) // 60fps
+  })
+
+  ipcMain.on('window-resize-stop', () => {
+    if (resizeInterval) {
+      clearInterval(resizeInterval)
+      resizeInterval = null
     }
   })
 
@@ -320,5 +363,9 @@ ipcMain.handle('set-brightness', async (event, index, value) => {
 
 ipcMain.handle('set-input', async (event, index, source) => {
   return await runPython(['set_input', index, source]);
+});
+
+ipcMain.handle('get-supported-features', async (event, index) => {
+  return await runPython(['get_supported_features', index]);
 });
 

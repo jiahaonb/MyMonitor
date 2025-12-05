@@ -2,7 +2,10 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import TitleBar from './components/TitleBar.vue'
 import BrightnessPanel from './components/BrightnessPanel.vue'
+import InputPanel from './components/InputPanel.vue'
+import PowerPanel from './components/PowerPanel.vue'
 import ConfigPanel from './components/ConfigPanel.vue'
+import VcpPanel from './components/VcpPanel.vue'
 import { configManager } from './utils/config.js'
 
 const currentTab = ref('brightness')
@@ -11,13 +14,23 @@ const isVisible = ref(false) // 控制动画显示
 
 const tabs = [
   { id: 'brightness', label: '亮度', icon: '☀️' },
-  { id: 'config', label: '配置', icon: '⚙️' }
+  { id: 'input', label: '输入源', icon: '📺' },
+  { id: 'power', label: '电源', icon: '⚡' },
+  { id: 'config', label: '配置', icon: '⚙️' },
+  { id: 'vcp', label: '说明', icon: '📖' }
 ]
 
 // 监听配置更新
 const handleConfigUpdate = (event) => {
   if (event.detail.panelOpacity !== undefined) {
     panelOpacity.value = event.detail.panelOpacity
+  }
+}
+
+// 监听标签切换请求
+const handleSwitchTab = (event) => {
+  if (event.detail && event.detail.tabId) {
+    currentTab.value = event.detail.tabId
   }
 }
 
@@ -38,6 +51,7 @@ onMounted(async () => {
   const config = await configManager.loadConfig()
   panelOpacity.value = config.panelOpacity
   window.addEventListener('config-updated', handleConfigUpdate)
+  window.addEventListener('switch-tab', handleSwitchTab)
   
   // 监听主进程消息
   window.electron?.ipcRenderer?.on('show-settings-window', handleShow)
@@ -49,6 +63,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('config-updated', handleConfigUpdate)
+  window.removeEventListener('switch-tab', handleSwitchTab)
   window.electron?.ipcRenderer?.off('show-settings-window', handleShow)
   window.electron?.ipcRenderer?.off('hide-settings-window', handleHide)
 })
@@ -89,7 +104,10 @@ onUnmounted(() => {
           <!-- 右侧内容区 -->
           <div class="content-area">
             <BrightnessPanel v-if="currentTab === 'brightness'" />
+            <InputPanel v-if="currentTab === 'input'" />
+            <PowerPanel v-if="currentTab === 'power'" />
             <ConfigPanel v-if="currentTab === 'config'" />
+            <VcpPanel v-if="currentTab === 'vcp'" />
           </div>
         </div>
       </div>
@@ -146,15 +164,12 @@ html, body {
   -webkit-backdrop-filter: blur(60px) saturate(150%);
   
   border-radius: 24px; /* 恢复较大圆角 */
-  /* 增强的玻璃质感边框 */
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-top: 1px solid rgba(255, 255, 255, 0.7);
-  border-left: 1px solid rgba(255, 255, 255, 0.6);
+  /* 移除边框 */
+  border: none;
   
   /* 多层阴影创造深度感 */
   box-shadow: 
     0 20px 40px -10px rgba(0, 0, 0, 0.15),
-    0 0 0 1px rgba(255, 255, 255, 0.2) inset,
     0 0 20px rgba(255, 255, 255, 0.2) inset;
   
   display: flex;

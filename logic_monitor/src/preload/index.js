@@ -7,6 +7,7 @@ const api = {
   getMonitors: () => ipcRenderer.invoke('get-monitors'),
   setBrightness: (index, value) => ipcRenderer.invoke('set-brightness', index, value),
   setInput: (index, source) => ipcRenderer.invoke('set-input', index, source),
+  getSupportedFeatures: (index) => ipcRenderer.invoke('get-supported-features', index),
 
   // 配置管理
   getConfig: () => ipcRenderer.invoke('get-config'),
