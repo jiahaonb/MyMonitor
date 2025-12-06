@@ -155,22 +155,21 @@ html, body {
 
 /* --- 核心：液态玻璃卡片 (Liquid Card) - macOS 风格 --- */
 .liquid-card {
-  width: 96%;
-  max-width: 820px;
-  height: 88%; /* 稍微减小高度以留出更多边距 */
-  max-height: 580px;
-  margin: 40px auto 20px; /* 增加顶部边距到 40px */
+  position: relative; /* 为调整大小手柄定位 */
+  width: 100vw; /* 完全匹配窗口宽度 */
+  height: 100vh; /* 完全匹配窗口高度 */
+  margin: 0; /* 移除所有边距 */
   backdrop-filter: blur(60px) saturate(150%); 
   -webkit-backdrop-filter: blur(60px) saturate(150%);
   
-  border-radius: 24px; /* 恢复较大圆角 */
+  border-radius: 24px; /* 保持圆角 */
   /* 移除边框 */
   border: none;
   
-  /* 多层阴影创造深度感 */
+  /* 调整后的阴影：更细、更深 */
   box-shadow: 
-    0 20px 40px -10px rgba(0, 0, 0, 0.15),
-    0 0 20px rgba(255, 255, 255, 0.2) inset;
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
   
   display: flex;
   flex-direction: column;
@@ -221,38 +220,40 @@ h1 {
 .main-content {
   flex: 1;
   display: flex;
+  flex-direction: row; /* 横向布局：左侧导航栏，右侧内容 */
   gap: 16px;
-  min-height: 0;
+  min-height: 0; /* 重要：允许flex子元素正确计算高度 */
   padding: 0 24px 24px 24px; /* 添加内边距 */
 }
 
-/* --- 侧边栏 --- */
+/* --- 侧边栏（竖向排列，按钮横向）--- */
 .sidebar {
   display: flex;
-  flex-direction: column;
+  flex-direction: column; /* 竖向排列按钮 */
   gap: 8px;
-  width: 100px; /* 增加宽度以适配横向布局 */
+  width: 140px; /* 固定宽度以适配横向矩形按钮 */
   flex-shrink: 0;
 }
 
 .nav-item {
   display: flex;
-  flex-direction: column;
+  flex-direction: row; /* 横向排列：左emoji右汉字 */
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 12px 8px;
+  gap: 8px; /* emoji和文字之间的间距 */
+  padding: 10px 16px;
   background: rgba(255, 255, 255, 0.3);
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   color: #374151;
+  white-space: nowrap; /* 防止文字换行 */
 }
 
 .nav-item:hover {
   background: rgba(255, 255, 255, 0.6);
-  transform: translateX(2px);
+  transform: translateX(2px); /* 向右移动效果 */
 }
 
 .nav-item.active {
@@ -263,11 +264,11 @@ h1 {
 }
 
 .nav-icon {
-  font-size: 24px;
+  font-size: 20px; /* 稍微缩小以适配横向布局 */
 }
 
 .nav-label {
-  font-size: 11px;
+  font-size: 13px; /* 稍微增大文字 */
   font-weight: 600;
   letter-spacing: 0.2px;
 }
@@ -278,6 +279,29 @@ h1 {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0; /* 重要：允许overflow生效 */
+  overflow-y: auto; /* 启用垂直滚动 */
+  /* 美观的滚动条样式 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(167, 139, 250, 0.3) transparent;
+}
+
+/* WebKit浏览器滚动条美化 */
+.content-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.content-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content-area::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.3);
+  border-radius: 4px;
+}
+
+.content-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(167, 139, 250, 0.5);
 }
 
 /* --- 暗色模式 --- */

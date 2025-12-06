@@ -270,7 +270,7 @@ app.whenReady().then(() => {
         newBounds.height -= deltaY
       }
 
-      // 最小尺寸限制
+      // 最小尺寸限制（保持现有最小值，移除最大值限制以允许无限放大）
       if (newBounds.width < 750) newBounds.width = 750
       if (newBounds.height < 550) newBounds.height = 550
 
