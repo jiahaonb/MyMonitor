@@ -41,16 +41,16 @@ function saveConfig(config) {
 function createQuickPanel() {
   quickPanel = new BrowserWindow({
     width: 320,
-    height: 180,
+    height: 200,
     show: false,
     frame: false,
-    transparent: false,
+    transparent: true, // 必须为true才能完全透明
     backgroundColor: '#00000000',
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    hasShadow: true, // 启用系统阴影 - Windows 11会自动添加圆角
-    roundedCorners: true, // Windows 11 原生圆角支持
+    hasShadow: true,
+    roundedCorners: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -71,11 +71,6 @@ function createQuickPanel() {
     }
   })
 
-  // 窗口ready后设置透明背景
-  quickPanel.once('ready-to-show', () => {
-    quickPanel.setBackgroundColor('#00000000')
-  })
-
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     quickPanel.loadURL(process.env['ELECTRON_RENDERER_URL'] + '/quick.html')
   } else {
@@ -94,7 +89,7 @@ function createSettingsWindow() {
     minHeight: 550,
     show: false,
     frame: false, // 无边框
-    transparent: false,
+    transparent: true,
     backgroundColor: '#00000000',
     resizable: true,
     skipTaskbar: false,

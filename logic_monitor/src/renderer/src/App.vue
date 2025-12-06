@@ -9,8 +9,7 @@ import VcpPanel from './components/VcpPanel.vue'
 import { configManager } from './utils/config.js'
 
 const currentTab = ref('brightness')
-const panelOpacity = ref(0.9) // 初始透明度90%
-const isVisible = ref(false) // 控制动画显示
+const panelOpacity = ref(0.9)
 
 const tabs = [
   { id: 'brightness', label: '亮度', icon: '☀️' },
@@ -34,179 +33,129 @@ const handleSwitchTab = (event) => {
   }
 }
 
-// 监听显示/隐藏命令
-const handleShow = () => {
-  isVisible.value = true
-}
-
-const handleHide = () => {
-  isVisible.value = false
-  // 等待动画结束后通知主进程隐藏窗口
-  setTimeout(() => {
-    window.electron?.ipcRenderer?.send('settings-window-hide-finished')
-  }, 350)
-}
-
 onMounted(async () => {
   const config = await configManager.loadConfig()
   panelOpacity.value = config.panelOpacity
   window.addEventListener('config-updated', handleConfigUpdate)
   window.addEventListener('switch-tab', handleSwitchTab)
-  
-  // 监听主进程消息
-  window.electron?.ipcRenderer?.on('show-settings-window', handleShow)
-  window.electron?.ipcRenderer?.on('hide-settings-window', handleHide)
-  
-  // 稍微延迟显示以触发初始动画
-  setTimeout(() => { isVisible.value = true }, 100)
 })
 
 onUnmounted(() => {
   window.removeEventListener('config-updated', handleConfigUpdate)
   window.removeEventListener('switch-tab', handleSwitchTab)
-  window.electron?.ipcRenderer?.off('show-settings-window', handleShow)
-  window.electron?.ipcRenderer?.off('hide-settings-window', handleHide)
 })
 </script>
 
 <template>
-  <div class="universe">
-    <Transition name="zoom">
-      <!-- 主玻璃面板 -->
-      <div v-if="isVisible" class="liquid-card" :style="{ background: `rgba(255, 255, 255, ${panelOpacity})` }">
-        
-        <!-- 自定义标题栏 -->
-        <TitleBar />
-        
-        <!-- 顶部标题 -->
-        <div class="header">
-          <div class="header-text">
-            <h1>显示器<span class="highlight">控制中心</span></h1>
-            <p class="status-badge">已连接</p>
-          </div>
-        </div>
-
-        <!-- 主要内容区 -->
-        <div class="main-content">
-          <!-- 左侧导航栏 -->
-          <div class="sidebar">
-            <button 
-              v-for="tab in tabs" 
-              :key="tab.id"
-              :class="['nav-item', { active: currentTab === tab.id }]"
-              @click="currentTab = tab.id"
-            >
-              <span class="nav-icon">{{ tab.icon }}</span>
-              <span class="nav-label">{{ tab.label }}</span>
-            </button>
-          </div>
-
-          <!-- 右侧内容区 -->
-          <div class="content-area">
-            <BrightnessPanel v-if="currentTab === 'brightness'" />
-            <InputPanel v-if="currentTab === 'input'" />
-            <PowerPanel v-if="currentTab === 'power'" />
-            <ConfigPanel v-if="currentTab === 'config'" />
-            <VcpPanel v-if="currentTab === 'vcp'" />
-          </div>
-        </div>
+  <!-- 直接在窗口上渲染，无wrapper -->
+  <div class="app-root">
+    <!-- 自定义标题栏 -->
+    <TitleBar />
+    
+    <!-- 顶部标题 -->
+    <div class="header">
+      <div class="header-text">
+        <h1>显示器<span class="highlight">控制中心</span></h1>
+        <p class="status-badge">已连接</p>
       </div>
-    </Transition>
+    </div>
+
+    <!-- 主要内容区 -->
+    <div class="main-content">
+      <!-- 左侧导航栏 -->
+      <div class="sidebar">
+        <button 
+          v-for="tab in tabs" 
+          :key="tab.id"
+          :class="['nav-item', { active: currentTab === tab.id }]"
+          @click="currentTab = tab.id"
+        >
+          <span class="nav-icon">{{ tab.icon }}</span>
+          <span class="nav-label">{{ tab.label }}</span>
+        </button>
+      </div>
+
+      <!-- 右侧内容区 -->
+      <div class="content-area">
+        <BrightnessPanel v-if="currentTab === 'brightness'" />
+        <InputPanel v-if="currentTab === 'input'" />
+        <PowerPanel v-if="currentTab === 'power'" />
+        <ConfigPanel v-if="currentTab === 'config'" />
+        <VcpPanel v-if="currentTab === 'vcp'" />
+      </div>
+    </div>
   </div>
 </template>
 
 <style>
-/* 全局样式 - 确保完全透明背景 */
+/* 全局样式 - 移除所有默认边距和背景 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 html, body {
-  margin: 0 !important;
-  padding: 0 !important;
-  background: transparent !important;
-  overflow: hidden !important;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* 关键！在html/body层设置圆角 */
+  border-radius: 12px;
 }
 
 #app {
-  background: transparent !important;
-}
-
-/* 缩放动画 */
-.zoom-enter-active,
-.zoom-leave-active {
-  transition: all 0.35s cubic-bezier(0.19, 1, 0.22, 1);
-}
-
-.zoom-enter-from,
-.zoom-leave-to {
-  opacity: 0;
-  transform: scale(0.92);
+  width: 100%;
+  height: 100%;
+  /* 确保app也有圆角 */
+  border-radius: 12px;
+  overflow: hidden;
 }
 </style>
 
 <style scoped>
-/* --- 宇宙背景层 (Universe) --- */
-.universe {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: transparent;
-  overflow: hidden; /* 隐藏溢出，确保圆角边界清晰 */
-}
-
-/* --- 核心：液态玻璃卡片 (Liquid Card) - macOS 风格，配合原生模糊 --- */
-.liquid-card {
-  position: absolute;
-  top: 0;
-  left: 0;
+/* App根容器 - 直接填充整个窗口 */
+.app-root {
   width: 100%;
   height: 100%;
-  
-  /* 增强背景对比度 - 配合原生 vibrancy/acrylic */
-  background: rgba(240, 240, 245, 0.75); /* 提高不透明度以增强可见度 */
-  /* CSS 模糊效果 */
-  backdrop-filter: blur(40px) saturate(150%); 
-  -webkit-backdrop-filter: blur(40px) saturate(150%);
-  
-  border-radius: 24px; /* macOS 标准圆角 */
-  
-  /* 更明显的边框和阴影 */
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 
-    0 0 0 1px rgba(0, 0, 0, 0.06),    /* 细边框 */
-    0 12px 48px rgba(0, 0, 0, 0.18),  /* 加强主阴影 */
-    inset 0 1px 0 rgba(255, 255, 255, 0.7); /* 增强顶部高光 */
-  
   display: flex;
   flex-direction: column;
-  padding: 0;
+  /* 淡雅的浅灰色背景 - Windows 11 风格 */
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8ebf0 100%);
   color: #1d1d1f;
-  transition: background 0.3s ease;
+  /* 添加圆角 - 配合Windows 11原生圆角 */
+  border-radius: 12px;
   overflow: hidden; /* 确保内容不超出圆角 */
 }
 
-/* --- 头部设计 --- */
+/* 顶部标题区 */
 .header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding: 0 24px 16px 24px; /* 添加左右内边距 */
+  padding: 12px 24px 16px 24px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(10px);
+}
+
+.header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 h1 {
-  margin: 0;
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 700;
-  letter-spacing: -0.6px;
+  letter-spacing: -0.5px;
   color: #1d1d1f;
 }
 
 .highlight {
-  background: linear-gradient(135deg, #A18CD1 0%, #FBC2EB 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-left: 4px;
+  background-clip: text;
 }
 
 .status-badge {
@@ -214,84 +163,91 @@ h1 {
   color: rgba(0, 0, 0, 0.45);
   background: rgba(0, 0, 0, 0.04);
   padding: 3px 10px;
-  border-radius: 12px;
+  border-radius: 10px;
   display: inline-block;
-  margin-top: 6px;
   font-weight: 600;
   letter-spacing: 0.3px;
+  align-self: flex-start;
 }
 
-/* --- 主要内容区 --- */
+/* 主内容区 */
 .main-content {
   flex: 1;
   display: flex;
-  flex-direction: row; /* 横向布局：左侧导航栏，右侧内容 */
+  flex-direction: row;
   gap: 16px;
-  min-height: 0; /* 重要：允许flex子元素正确计算高度 */
-  padding: 0 24px 24px 24px; /* 添加内边距 */
+  min-height: 0;
+  padding: 16px 24px 24px 24px;
 }
 
-/* --- 侧边栏（竖向排列，按钮横向）--- */
+/* 侧边栏 - 竖向排列，按钮横向 */
 .sidebar {
   display: flex;
-  flex-direction: column; /* 竖向排列按钮 */
+  flex-direction: column;
   gap: 8px;
-  width: 140px; /* 固定宽度以适配横向矩形按钮 */
+  width: 140px;
   flex-shrink: 0;
 }
 
 .nav-item {
   display: flex;
-  flex-direction: row; /* 横向排列：左emoji右汉字 */
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  gap: 8px; /* emoji和文字之间的间距 */
-  padding: 10px 16px;
-  background: rgba(255, 255, 255, 0.3);
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 12px;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   color: #374151;
-  white-space: nowrap; /* 防止文字换行 */
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.6);
-  transform: translateX(2px); /* 向右移动效果 */
+  background: rgba(255, 255, 255, 0.85);
+  transform: translateX(2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, #A78BFA 0%, #C084FC 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
-  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.3);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  transform: translateX(4px);
 }
 
 .nav-icon {
-  font-size: 20px; /* 稍微缩小以适配横向布局 */
+  font-size: 18px;
 }
 
 .nav-label {
-  font-size: 13px; /* 稍微增大文字 */
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.2px;
 }
 
-/* --- 内容区域 --- */
+/* 内容区域 */
 .content-area {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 0; /* 重要：允许overflow生效 */
-  overflow-y: auto; /* 启用垂直滚动 */
-  /* 美观的滚动条样式 */
+  min-height: 0;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 12px;
+  padding: 16px;
+  /* 美观滚动条 */
   scrollbar-width: thin;
-  scrollbar-color: rgba(167, 139, 250, 0.3) transparent;
+  scrollbar-color: rgba(102, 126, 234, 0.3) transparent;
 }
 
-/* WebKit浏览器滚动条美化 */
+/* WebKit滚动条美化 */
 .content-area::-webkit-scrollbar {
   width: 8px;
 }
@@ -301,18 +257,24 @@ h1 {
 }
 
 .content-area::-webkit-scrollbar-thumb {
-  background: rgba(167, 139, 250, 0.3);
+  background: rgba(102, 126, 234, 0.3);
   border-radius: 4px;
 }
 
 .content-area::-webkit-scrollbar-thumb:hover {
-  background: rgba(167, 139, 250, 0.5);
+  background: rgba(102, 126, 234, 0.5);
 }
 
-/* --- 暗色模式 --- */
+/* 暗色模式 */
 @media (prefers-color-scheme: dark) {
-  .liquid-card {
-    border-color: rgba(255, 255, 255, 0.12);
+  .app-root {
+    background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+    color: #f5f5f7;
+  }
+  
+  .header {
+    background: rgba(40, 40, 45, 0.6);
+    border-bottom-color: rgba(255, 255, 255, 0.1);
   }
   
   h1 {
@@ -320,18 +282,22 @@ h1 {
   }
   
   .status-badge {
-    color: rgba(255, 255, 255, 0.45);
-    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.1);
   }
   
   .nav-item {
-    background: rgba(60, 60, 65, 0.4);
+    background: rgba(60, 60, 65, 0.6);
     color: #e5e5e7;
     border-color: rgba(255, 255, 255, 0.08);
   }
   
   .nav-item:hover {
-    background: rgba(80, 80, 85, 0.6);
+    background: rgba(80, 80, 85, 0.8);
+  }
+  
+  .content-area {
+    background: rgba(40, 40, 45, 0.4);
   }
 }
 </style>
