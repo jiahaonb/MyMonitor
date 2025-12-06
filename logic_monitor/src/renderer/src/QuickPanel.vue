@@ -18,6 +18,10 @@ const VCP_CODES = {
 // 快捷亮度预设值
 const quickPresets = [0, 25, 50, 100]
 
+// 下拉菜单状态
+const isDropdownOpen = ref(false)
+const dropdownRef = ref(null)
+
 // 当前显示器
 const currentMonitor = computed(() => {
   return monitors.value[currentMonitorIndex.value] || null
@@ -29,6 +33,24 @@ const supportsFeature = (vcp_code) => {
     return false
   }
   return currentMonitor.value.supported_codes.includes(vcp_code)
+}
+
+// 切换下拉菜单
+const toggleDropdown = () => {
+  isDropdownOpen.value = !isDropdownOpen.value
+}
+
+// 选择显示器
+const selectMonitor = (index) => {
+  currentMonitorIndex.value = index
+  isDropdownOpen.value = false
+}
+
+// 点击外部关闭下拉
+const handleClickOutside = (event) => {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+    isDropdownOpen.value = false
+  }
 }
 
 const fetchMonitors = async (silent = false) => {
@@ -61,20 +83,6 @@ const setBrightness = async (index, value) => {
     monitors.value[index].brightness = value
   }
   await window.api.setBrightness(index, value)
-}
-
-// 切换到下一个显示器
-const nextMonitor = () => {
-  if (monitors.value.length > 1) {
-    currentMonitorIndex.value = (currentMonitorIndex.value + 1) % monitors.value.length
-  }
-}
-
-// 切换到上一个显示器
-const prevMonitor = () => {
-  if (monitors.value.length > 1) {
-    currentMonitorIndex.value = (currentMonitorIndex.value - 1 + monitors.value.length) % monitors.value.length
-  }
 }
 
 // 电源控制（示例：切换开/关）
@@ -150,6 +158,9 @@ onMounted(() => {
   window.electron?.ipcRenderer?.on('show-quick-panel', handleShow)
   window.electron?.ipcRenderer?.on('hide-quick-panel', handleHide)
   
+  // 添加点击外部关闭下拉菜单
+  document.addEventListener('click', handleClickOutside)
+  
   setTimeout(() => { isVisible.value = true }, 100)
 })
 
@@ -158,6 +169,7 @@ onUnmounted(() => {
   window.electron?.ipcRenderer?.off('hide-quick-panel', handleHide)
   window.removeEventListener('mousemove', handleMouseMove)
   window.removeEventListener('mouseup', handleMouseUp)
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -165,33 +177,45 @@ onUnmounted(() => {
   <div class="quick-panel-wrapper">
     <Transition name="slide-fade">
       <div v-if="isVisible" class="quick-panel">
-        <!-- 显示器切换器 - 左上角 -->
-        <div class="monitor-switcher">
-          <button 
-            class="switch-btn" 
-            @click="prevMonitor"
-            :disabled="monitors.length <= 1"
-            v-show="monitors.length > 1"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+        <!-- 显示器选择下拉菜单 - 左上角 -->
+        <div class="monitor-selector" ref="dropdownRef">
+          <button class="selector-btn" @click="toggleDropdown">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.6;">
+              <path d="M20 3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h3l-1 1v2h12v-2l-1-1h3c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H4V5h16v11z"/>
+            </svg>
+            <span class="monitor-name">{{ currentMonitor?.name || '选择显示器' }}</span>
+            <svg 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24" 
+              fill="currentColor" 
+              style="opacity: 0.5;"
+              :style="{ transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }"
+            >
+              <path d="M7 10l5 5 5-5z"/>
             </svg>
           </button>
           
-          <div class="monitor-name">
-            {{ currentMonitor?.name || '控制中心' }}
-          </div>
-          
-          <button 
-            class="switch-btn" 
-            @click="nextMonitor"
-            :disabled="monitors.length <= 1"
-            v-show="monitors.length > 1"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
-            </svg>
-          </button>
+          <!-- 下拉列表 -->
+          <Transition name="dropdown-fade">
+            <div v-if="isDropdownOpen" class="dropdown-list">
+              <button
+                v-for="(monitor, index) in monitors"
+                :key="index"
+                class="dropdown-item"
+                :class="{ 'active': index === currentMonitorIndex }"
+                @click="selectMonitor(index)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.5;">
+                  <path d="M20 3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h3l-1 1v2h12v-2l-1-1h3c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H4V5h16v11z"/>
+                </svg>
+                <span>{{ monitor.name }}</span>
+                <svg v-if="index === currentMonitorIndex" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.7;">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              </button>
+            </div>
+          </Transition>
         </div>
         
         <!-- Liquid Glass 快捷功能区 -->
@@ -350,57 +374,110 @@ html, body {
   color: #1d1d1f;
 }
 
-/* 显示器切换器 */
-.monitor-switcher {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* 显示器选择下拉菜单 */
+.monitor-selector {
+  position: relative;
   margin-bottom: 12px;
-  height: 24px;
-  padding: 0 4px;
 }
 
-.monitor-name {
+.selector-btn {
+  width: 100%;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.selector-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.selector-btn .monitor-name {
   flex: 1;
-  text-align: center;
+  text-align: left;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: #1d1d1f;
   opacity: 0.85;
-  letter-spacing: -0.2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.switch-btn {
-  width: 24px;
-  height: 24px;
+/* 下拉列表 */
+.dropdown-list {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  
+  /* Liquid Glass 效果 */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0.3) 100%
+  );
+  backdrop-filter: blur(40px) saturate(160%);
+  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  
   border-radius: 12px;
-  border: none;
-  background: rgba(0, 0, 0, 0.05);
-  cursor: pointer;
+  padding: 4px;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.12),
+    0 2px 4px rgba(0, 0, 0, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 0.5),
+    0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.dropdown-item {
+  width: 100%;
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 12px;
+  font-weight: 500;
   color: #1d1d1f;
-  opacity: 0.6;
+  text-align: left;
 }
 
-.switch-btn:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.1);
-  opacity: 1;
-  transform: scale(1.05);
+.dropdown-item span {
+  flex: 1;
 }
 
-.switch-btn:active:not(:disabled) {
-  transform: scale(0.95);
+.dropdown-item:hover {
+  background: rgba(0, 0, 0, 0.06);
 }
 
-.switch-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
+.dropdown-item.active {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* 下拉动画 */
+.dropdown-fade-enter-active,
+.dropdown-fade-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dropdown-fade-enter-from,
+.dropdown-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
 }
 
 /* Liquid Glass 快捷功能区 */
@@ -734,6 +811,44 @@ html, body {
   
   .card-title {
     color: #fff;
+  }
+  
+  /* 下拉菜单选择器 - 暗色模式 */
+  .selector-btn {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  
+  .selector-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+  
+  .selector-btn .monitor-name {
+    color: #fff;
+  }
+  
+  .dropdown-list {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.15) 0%,
+      rgba(255, 255, 255, 0.08) 100%
+    );
+    box-shadow: 
+      0 4px 16px rgba(0, 0, 0, 0.3),
+      0 2px 4px rgba(0, 0, 0, 0.2),
+      inset 0 1px 1px rgba(255, 255, 255, 0.15),
+      0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  }
+  
+  .dropdown-item {
+    color: #fff;
+  }
+  
+  .dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+  
+  .dropdown-item.active {
+    background: rgba(255, 255, 255, 0.18);
   }
   
   /* 显示器切换器 - 暗色模式 */

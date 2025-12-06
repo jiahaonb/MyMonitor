@@ -2,6 +2,37 @@ import sys
 import json
 from monitorcontrol import get_monitors
 
+# Windows 显示器名称获取
+def get_windows_monitor_names():
+    """通过 WMI 获取 Windows 显示器名称"""
+    try:
+        import wmi
+        # 注意：使用 root\WMI 命名空间，不是 root\wmi
+        c = wmi.WMI(namespace='root\\WMI')
+        monitors = c.WmiMonitorID()
+        
+        monitor_names = []
+        for monitor in monitors:
+            # 解码字节数组获取用户友好名称
+            # UserFriendlyName 是一个整数数组，每个整数代表一个字符
+            if monitor.UserFriendlyName:
+                try:
+                    # 过滤掉 0 值并转换为字符
+                    name = ''.join(chr(c) for c in monitor.UserFriendlyName if c != 0)
+                    monitor_names.append(name.strip() if name.strip() else None)
+                except:
+                    monitor_names.append(None)
+            else:
+                monitor_names.append(None)
+        
+        return monitor_names
+    except ImportError:
+        sys.stderr.write("WMI module not installed. Run: pip install wmi\n")
+        return []
+    except Exception as e:
+        sys.stderr.write(f"WMI error: {e}\n")
+        return []
+
 # 定义输入源的 VCP 代码映射
 INPUT_SOURCES = {
     "HDMI1": 5,
@@ -21,20 +52,35 @@ def get_monitor_info():
     """获取所有显示器的信息"""
     monitors = get_monitors()
     info = []
+    
+    # 尝试获取 Windows 显示器名称
+    windows_names = get_windows_monitor_names()
+    
     for i, m in enumerate(monitors):
         try:
             with m:
                 # 获取亮度 (VCP 0x10)
                 bri = m.get_luminance()
                 
-                # 尝试获取显示器名称和型号
-                monitor_name = f"Monitor {i+1}"
-                try:
-                    cap_dict = m.get_vcp_capabilities()
-                    if cap_dict and 'model' in cap_dict:
-                        monitor_name = cap_dict['model']
-                except:
-                    pass
+                # 尝试获取显示器名称（优先使用 WMI，然后 VCP capabilities）
+                monitor_name = None
+                
+                # 方法 1: Windows WMI 名称
+                if windows_names and i < len(windows_names) and windows_names[i]:
+                    monitor_name = windows_names[i]
+                
+                # 方法 2: VCP capabilities 中的型号
+                if not monitor_name:
+                    try:
+                        cap_dict = m.get_vcp_capabilities()
+                        if cap_dict and 'model' in cap_dict:
+                            monitor_name = cap_dict['model']
+                    except:
+                        pass
+                
+                # 方法 3: 回退到默认名称
+                if not monitor_name:
+                    monitor_name = f"Monitor {i+1}"
                 
                 # 获取支持的 VCP 功能代码
                 supported_codes = []
