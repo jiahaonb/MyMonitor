@@ -10,6 +10,13 @@ INPUT_SOURCES = {
     "TYPE-C": 27
 }
 
+# VCP 代码定义
+VCP_CODES = {
+    'POWER': 0xD6,        # 电源状态
+    'INPUT_SOURCE': 0x60, # 输入源
+    'BRIGHTNESS': 0x10    # 亮度
+}
+
 def get_monitor_info():
     """获取所有显示器的信息"""
     monitors = get_monitors()
@@ -19,10 +26,38 @@ def get_monitor_info():
             with m:
                 # 获取亮度 (VCP 0x10)
                 bri = m.get_luminance()
+                
+                # 尝试获取显示器名称和型号
+                monitor_name = f"Monitor {i+1}"
+                try:
+                    cap_dict = m.get_vcp_capabilities()
+                    if cap_dict and 'model' in cap_dict:
+                        monitor_name = cap_dict['model']
+                except:
+                    pass
+                
+                # 获取支持的 VCP 功能代码
+                supported_codes = []
+                try:
+                    cap_dict = m.get_vcp_capabilities()
+                    if cap_dict and 'vcp' in cap_dict:
+                        vcp_data = cap_dict['vcp']
+                        for code in vcp_data.keys():
+                            if isinstance(code, int):
+                                supported_codes.append(code)
+                            elif isinstance(code, str):
+                                try:
+                                    supported_codes.append(int(code, 16))
+                                except:
+                                    pass
+                except:
+                    pass
+                
                 info.append({
                     "id": i,
-                    "name": f"Monitor {i+1}",
+                    "name": monitor_name,
                     "brightness": bri,
+                    "supported_codes": list(set(supported_codes)) if supported_codes else []
                 })
         except Exception as e:
             info.append({"id": i, "error": str(e)})
@@ -42,6 +77,20 @@ def set_input(monitor_index, source_name):
         with monitors[monitor_index] as m:
             try:
                 m.set_input_source(source_name)
+                return True
+            except Exception as e:
+                return False
+    return False
+
+def set_power(monitor_index, power_mode):
+    """设置显示器电源状态
+    power_mode: 1=On, 4=Standby, 5=Off
+    """
+    monitors = get_monitors()
+    if monitor_index < len(monitors):
+        with monitors[monitor_index] as m:
+            try:
+                m.set_vcp_feature(VCP_CODES['POWER'], power_mode)
                 return True
             except Exception as e:
                 return False
@@ -120,6 +169,12 @@ if __name__ == "__main__":
             idx = int(args[1])
             source = args[2]
             success = set_input(idx, source)
+            result = {"status": "success", "data": success}
+
+        elif args[0] == "set_power" and len(args) >= 3:
+            idx = int(args[1])
+            mode = int(args[2])
+            success = set_power(idx, mode)
             result = {"status": "success", "data": success}
 
         elif args[0] == "get_supported_features" and len(args) >= 2:

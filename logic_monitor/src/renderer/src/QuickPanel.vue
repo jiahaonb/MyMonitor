@@ -1,14 +1,35 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const monitors = ref([])
-const loading = ref(true) // 仅首次加载显示 loading
+const currentMonitorIndex = ref(0)  // 当前选中的显示器
+const loading = ref(true)
 const isVisible = ref(false)
 const isDragging = ref(false)
 const activeSliderIndex = ref(null)
 
+// VCP 代码常量
+const VCP_CODES = {
+  POWER: 0xD6,
+  INPUT_SOURCE: 0x60,
+  BRIGHTNESS: 0x10
+}
+
 // 快捷亮度预设值
 const quickPresets = [0, 25, 50, 100]
+
+// 当前显示器
+const currentMonitor = computed(() => {
+  return monitors.value[currentMonitorIndex.value] || null
+})
+
+// 检查当前显示器是否支持特定功能
+const supportsFeature = (vcp_code) => {
+  if (!currentMonitor.value || !currentMonitor.value.supported_codes) {
+    return false
+  }
+  return currentMonitor.value.supported_codes.includes(vcp_code)
+}
 
 const fetchMonitors = async (silent = false) => {
   if (!silent && monitors.value.length === 0) {
@@ -19,6 +40,10 @@ const fetchMonitors = async (silent = false) => {
     const res = await window.api.getMonitors()
     if (res.status === 'success') {
       monitors.value = res.data
+      // 确保当前索引有效
+      if (currentMonitorIndex.value >= monitors.value.length) {
+        currentMonitorIndex.value = 0
+      }
     }
   } catch (err) { 
     console.error(err) 
@@ -38,64 +63,93 @@ const setBrightness = async (index, value) => {
   await window.api.setBrightness(index, value)
 }
 
+// 切换到下一个显示器
+const nextMonitor = () => {
+  if (monitors.value.length > 1) {
+    currentMonitorIndex.value = (currentMonitorIndex.value + 1) % monitors.value.length
+  }
+}
+
+// 切换到上一个显示器
+const prevMonitor = () => {
+  if (monitors.value.length > 1) {
+    currentMonitorIndex.value = (currentMonitorIndex.value - 1 + monitors.value.length) % monitors.value.length
+  }
+}
+
+// 电源控制（示例：切换开/关）
+const handlePower = async () => {
+  if (!supportsFeature(VCP_CODES.POWER)) return
+  
+  // TODO: 实现电源菜单或状态切换
+  // 1=On, 4=Standby, 5=Off
+  // 这里简单示例设置为待机
+  try {
+    await window.api.setPower(currentMonitorIndex.value, 4)
+  } catch (err) {
+    console.error('Power control error:', err)
+  }
+}
+
+// 输入源控制
+const handleInputSource = async () => {
+  if (!supportsFeature(VCP_CODES.INPUT_SOURCE)) return
+  
+  // TODO: 显示输入源选择菜单
+  console.log('Input source clicked')
+}
+
 // 滑块拖动逻辑
-const startDrag = (e, index) => {
+const startDrag = (e) => {
   isDragging.value = true
-  activeSliderIndex.value = index
-  updateSlider(e, index)
+  updateSlider(e)
   
   window.addEventListener('mousemove', handleMouseMove)
   window.addEventListener('mouseup', handleMouseUp)
 }
 
 const handleMouseMove = (e) => {
-  if (isDragging.value && activeSliderIndex.value !== null) {
-    updateSlider(e, activeSliderIndex.value)
+  if (isDragging.value) {
+    updateSlider(e)
   }
 }
 
 const handleMouseUp = () => {
   isDragging.value = false
-  activeSliderIndex.value = null
   window.removeEventListener('mousemove', handleMouseMove)
   window.removeEventListener('mouseup', handleMouseUp)
 }
 
-const updateSlider = (e, index) => {
-  const slider = document.getElementById(`slider-${index}`)
-  if (!slider) return
+const updateSlider = (e) => {
+  const slider = document.getElementById('brightness-slider')
+  if (!slider || !currentMonitor.value) return
   
   const rect = slider.getBoundingClientRect()
   const percentage = (e.clientX - rect.left) / rect.width
   const value = Math.max(0, Math.min(100, percentage * 100))
   
-  setBrightness(index, value)
+  setBrightness(currentMonitorIndex.value, value)
 }
 
 // 监听显示/隐藏命令
 const handleShow = () => {
   isVisible.value = true
-  // 静默刷新数据，不显示 loading
   fetchMonitors(true)
 }
 
 const handleHide = () => {
   isVisible.value = false
-  // 等待动画结束后通知主进程隐藏窗口
   setTimeout(() => {
     window.electron?.ipcRenderer?.send('quick-panel-hide-finished')
-  }, 300) // 对应 CSS transition 时间
+  }, 300)
 }
 
 onMounted(() => {
-  // 初始加载
   fetchMonitors()
   
-  // 监听主进程消息
   window.electron?.ipcRenderer?.on('show-quick-panel', handleShow)
   window.electron?.ipcRenderer?.on('hide-quick-panel', handleHide)
   
-  // 稍微延迟显示以触发初始动画（如果是首次加载）
   setTimeout(() => { isVisible.value = true }, 100)
 })
 
@@ -111,45 +165,103 @@ onUnmounted(() => {
   <div class="quick-panel-wrapper">
     <Transition name="slide-fade">
       <div v-if="isVisible" class="quick-panel">
-        <div class="panel-header">
-          <h2>显示器</h2>
+        <!-- 显示器切换器 - 左上角 -->
+        <div class="monitor-switcher">
+          <button 
+            class="switch-btn" 
+            @click="prevMonitor"
+            :disabled="monitors.length <= 1"
+            v-show="monitors.length > 1"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+            </svg>
+          </button>
+          
+          <div class="monitor-name">
+            {{ currentMonitor?.name || '控制中心' }}
+          </div>
+          
+          <button 
+            class="switch-btn" 
+            @click="nextMonitor"
+            :disabled="monitors.length <= 1"
+            v-show="monitors.length > 1"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+            </svg>
+          </button>
         </div>
         
-        <div v-if="loading" class="loading">
-          <div class="spinner"></div>
+        <!-- Liquid Glass 快捷功能区 -->
+        <div class="quick-actions-grid">
+          <button 
+            class="liquid-glass-btn power-btn" 
+            @click="handlePower"
+            :disabled="!supportsFeature(VCP_CODES.POWER)"
+            :class="{ 'disabled': !supportsFeature(VCP_CODES.POWER) }"
+          >
+            <svg class="btn-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2v10M18.36 5.64a9 9 0 1 1-12.73 0"/>
+            </svg>
+            <span class="btn-label">电源</span>
+          </button>
+          
+          <button 
+            class="liquid-glass-btn input-btn"
+            @click="handleInputSource"
+            :disabled="!supportsFeature(VCP_CODES.INPUT_SOURCE)"
+            :class="{ 'disabled': !supportsFeature(VCP_CODES.INPUT_SOURCE) }"
+          >
+            <svg class="btn-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h3l-1 1v2h12v-2l-1-1h3c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H4V5h16v11z"/>
+            </svg>
+            <span class="btn-label">输入源</span>
+          </button>
         </div>
         
-        <div v-else class="monitors-list">
-          <div v-for="(m, idx) in monitors" :key="idx" class="monitor-item">
-            <div class="monitor-header">
-              <span class="name">{{ m.name }}</span>
-              
+        <!-- Liquid Glass 显示器控制卡片 -->
+        <div v-if="currentMonitor" class="liquid-glass-card">
+          <div class="card-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.6;">
+              <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5z"/>
+            </svg>
+            <span>亮度</span>
+          </div>
+          
+          <div v-if="loading" class="loading">
+            <div class="spinner"></div>
+          </div>
+          
+          <div v-else class="brightness-control">
+            <div class="brightness-header">
               <!-- 迷你快捷按钮组 -->
               <div class="mini-actions">
                 <button 
                   v-for="preset in quickPresets" 
                   :key="preset"
-                  :class="['mini-btn', { 'active': Math.abs(m.brightness - preset) < 5 }]"
-                  @click="setBrightness(idx, preset)"
+                  :class="['mini-btn', { 'active': Math.abs(currentMonitor.brightness - preset) < 5 }]"
+                  @click="setBrightness(currentMonitorIndex, preset)"
                   :title="`设置亮度为 ${preset}%`"
                 >
                   {{ preset }}
                 </button>
               </div>
 
-              <span class="value">{{ m.brightness }}%</span>
+              <span class="value">{{ currentMonitor.brightness }}%</span>
             </div>
             
             <!-- macOS 风格滑块 -->
             <div 
-              :id="`slider-${idx}`"
+              id="brightness-slider"
               class="macos-slider" 
-              @mousedown="e => startDrag(e, idx)"
+              @mousedown="startDrag"
             >
               <!-- 背景层 -->
               <div class="slider-bg"></div>
               <!-- 填充层 -->
-              <div class="slider-fill" :style="{ width: m.brightness + '%' }"></div>
+              <div class="slider-fill" :style="{ width: currentMonitor.brightness + '%' }"></div>
               <!-- 图标层 -->
               <div class="slider-icon-container">
                 <div class="slider-icon">
@@ -201,24 +313,26 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  padding: 6px; /* 移除 padding，让面板紧贴窗口边缘，避免阴影被截断 */
 }
 
 .quick-panel {
   width: 100%;
   height: 100%;
-  /* 玻璃拟态背景 */
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  /* macOS 风格材质背景 - 在白色背景下也能清晰可见 */
+  background: rgba(245, 245, 247, 0.85);
+  backdrop-filter: blur(60px) saturate(180%);
+  -webkit-backdrop-filter: blur(60px) saturate(180%);
   border-radius: 18px;
   padding: 16px;
   display: flex;
   flex-direction: column;
   color: #1d1d1f;
-  /* 仅保留内部高光，移除外部阴影 */
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  /* 只保留内部高光，外部阴影由窗口系统阴影提供 */
+  box-shadow: 
+    inset 0 0 0 1px rgba(255, 255, 255, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   transform-origin: bottom center;
 }
 
@@ -231,8 +345,182 @@ html, body {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  opacity: 0.6;
+  opacity: 0.5;
   letter-spacing: -0.2px;
+  color: #1d1d1f;
+}
+
+/* 显示器切换器 */
+.monitor-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  height: 24px;
+  padding: 0 4px;
+}
+
+.monitor-name {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+  opacity: 0.85;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.switch-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  color: #1d1d1f;
+  opacity: 0.6;
+}
+
+.switch-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.1);
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+.switch-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.switch-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Liquid Glass 快捷功能区 */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* Liquid Glass 按钮 - macOS Sequoia 风格 */
+.liquid-glass-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 12px;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  
+  /* Liquid Glass 核心效果 */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.4) 0%,
+    rgba(255, 255, 255, 0.25) 100%
+  );
+  backdrop-filter: blur(30px) saturate(150%);
+  -webkit-backdrop-filter: blur(30px) saturate(150%);
+  
+  /* 微妙的边框和阴影 */
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.03),
+    0 2px 8px rgba(0, 0, 0, 0.05),
+    0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.liquid-glass-btn:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0.35) 100%
+  );
+  transform: scale(1.02);
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.6),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.03),
+    0 4px 12px rgba(0, 0, 0, 0.08),
+    0 0 0 0.5px rgba(0, 0, 0, 0.08);
+}
+
+.liquid-glass-btn:active {
+  transform: scale(0.98);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.2) 100%
+  );
+}
+
+/* 禁用状态 */
+.liquid-glass-btn.disabled,
+.liquid-glass-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-icon {
+  color: #1d1d1f;
+  opacity: 0.8;
+}
+
+.btn-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #1d1d1f;
+  opacity: 0.7;
+  letter-spacing: -0.1px;
+}
+
+/* Liquid Glass 卡片 */
+.liquid-glass-card {
+  position: relative;
+  padding: 14px;
+  border-radius: 14px;
+  
+  /* Liquid Glass 效果 - 更透明更流畅 */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.2) 100%
+  );
+  backdrop-filter: blur(40px) saturate(160%);
+  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  
+  /* 柔和的边框和内阴影 */
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.4),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.02),
+    0 1px 6px rgba(0, 0, 0, 0.04),
+    0 0 0 0.5px rgba(0, 0, 0, 0.05);
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding-left: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1d1d1f;
+  opacity: 0.65;
+  letter-spacing: -0.1px;
 }
 
 .loading {
@@ -255,19 +543,14 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
-.monitors-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.monitor-item {
+/* 亮度控制区域 */
+.brightness-control {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.monitor-header {
+.brightness-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -278,12 +561,13 @@ html, body {
 .name {
   font-size: 13px;
   font-weight: 500;
-  opacity: 0.8;
+  opacity: 0.85;
   letter-spacing: -0.1px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 80px; /* 防止名称过长挤压按钮 */
+  color: #1d1d1f;
 }
 
 /* 迷你快捷按钮组 */
@@ -310,26 +594,37 @@ html, body {
   cursor: pointer;
   transition: all 0.2s;
   padding: 0;
+  /* 微妙阴影 */
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .mini-btn:hover {
   background: rgba(255, 255, 255, 0.8);
   transform: scale(1.05);
+  box-shadow: 
+    0 2px 6px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .mini-btn.active {
   background: #333;
   color: white;
   border-color: transparent;
+  box-shadow: 
+    0 1px 4px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .value {
   font-size: 13px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  opacity: 0.6;
+  opacity: 0.65;
   min-width: 32px;
   text-align: right;
+  color: #1d1d1f;
 }
 
 /* macOS 风格滑块 */
@@ -340,8 +635,8 @@ html, body {
   border-radius: 14px;
   cursor: pointer;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.05);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.08);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
   transition: transform 0.1s;
 }
 
@@ -391,6 +686,70 @@ html, body {
     border-color: rgba(255, 255, 255, 0.05);
   }
   
+  /* Liquid Glass 按钮 - 暗色模式 */
+  .liquid-glass-btn {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.15) 0%,
+      rgba(255, 255, 255, 0.08) 100%
+    );
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.15),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.1),
+      0 2px 8px rgba(0, 0, 0, 0.2),
+      0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  }
+  
+  .liquid-glass-btn:hover {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.2) 0%,
+      rgba(255, 255, 255, 0.12) 100%
+    );
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.2),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.1),
+      0 4px 12px rgba(0, 0, 0, 0.25),
+      0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  }
+  
+  .btn-icon,
+  .btn-label {
+    color: #fff;
+  }
+  
+  /* Liquid Glass 卡片 - 暗色模式 */
+  .liquid-glass-card {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.06) 100%
+    );
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.12),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.1),
+      0 1px 6px rgba(0, 0, 0, 0.15),
+      0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  }
+  
+  .card-title {
+    color: #fff;
+  }
+  
+  /* 显示器切换器 - 暗色模式 */
+  .monitor-name {
+    color: #fff;
+  }
+  
+  .switch-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+  }
+  
+  .switch-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  
   .mini-btn {
     background: rgba(255, 255, 255, 0.1);
     color: #eee;
@@ -404,6 +763,10 @@ html, body {
   .mini-btn.active {
     background: #fff;
     color: #000;
+  }
+  
+  .value {
+    color: #fff;
   }
   
   .macos-slider {

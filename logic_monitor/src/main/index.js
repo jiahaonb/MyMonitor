@@ -41,7 +41,7 @@ function saveConfig(config) {
 function createQuickPanel() {
   quickPanel = new BrowserWindow({
     width: 320,
-    height: 200,
+    height: 340,  // 增加高度以适应 Liquid Glass 布局
     show: false,
     frame: false,
     transparent: true, // 必须为true才能完全透明
@@ -177,13 +177,13 @@ function createTray() {
         posX = Math.round(x + trayWidth / 2 - panelWidth / 2)
         posY = Math.round(y + trayHeight + 5)
       } else if (process.platform === 'win32') {
-        // Windows: 托盘在底部，窗口显示在托盘图标上方
+        // Windows: 托盘在底部，窗口紧贴任务栏上方
         posX = Math.round(x + trayWidth / 2 - panelWidth / 2)
-        posY = Math.round(y - panelHeight - 10)
+        posY = Math.round(y - panelHeight - 4)  // 减少间距，更贴近任务栏
       } else {
         // Linux
         posX = Math.round(x - panelWidth / 2)
-        posY = Math.round(y - panelHeight - 10)
+        posY = Math.round(y - panelHeight - 4)
       }
 
       // 确保窗口不会超出屏幕边界
@@ -380,3 +380,6 @@ ipcMain.handle('get-supported-features', async (event, index) => {
   return await runPython(['get_supported_features', index]);
 });
 
+ipcMain.handle('set-power', async (event, index, mode) => {
+  return await runPython(['set_power', index, mode]);
+});
