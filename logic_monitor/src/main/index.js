@@ -44,13 +44,13 @@ function createQuickPanel() {
     height: 180,
     show: false,
     frame: false,
-    transparent: true,
+    transparent: false,
     backgroundColor: '#00000000',
     resizable: false,
     skipTaskbar: true,
-    alwaysOnTop: true, // 始终在最前
-    hasShadow: false, // 移除系统窗口阴影
-    roundedCorners: true,
+    alwaysOnTop: true,
+    hasShadow: true, // 启用系统阴影 - Windows 11会自动添加圆角
+    roundedCorners: true, // Windows 11 原生圆角支持
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -59,12 +59,21 @@ function createQuickPanel() {
     }
   })
 
+  // macOS 使用 vibrancy
+  if (process.platform === 'darwin') {
+    quickPanel.setVibrancy('popover')
+  }
+
   // 点击外部时隐藏窗口
   quickPanel.on('blur', () => {
-    // 发送隐藏动画指令
     if (quickPanel && quickPanel.isVisible()) {
       quickPanel.webContents.send('hide-quick-panel')
     }
+  })
+
+  // 窗口ready后设置透明背景
+  quickPanel.once('ready-to-show', () => {
+    quickPanel.setBackgroundColor('#00000000')
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -84,13 +93,13 @@ function createSettingsWindow() {
     minWidth: 750,
     minHeight: 550,
     show: false,
-    frame: false, // 无边框，使用自定义标题栏
-    transparent: true, // 恢复透明背景
-    backgroundColor: '#00000000', // 完全透明
-    resizable: true, // 允许调整大小
-    skipTaskbar: false, // 显示在任务栏
-    hasShadow: false,
-    roundedCorners: true,
+    frame: false, // 无边框
+    transparent: false,
+    backgroundColor: '#00000000',
+    resizable: true,
+    skipTaskbar: false,
+    hasShadow: true, // 启用系统阴影 - Windows 11会自动添加圆角
+    roundedCorners: true, // Windows 11 原生圆角支持
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -99,9 +108,16 @@ function createSettingsWindow() {
     }
   })
 
+  // macOS 使用 vibrancy
+  if (process.platform === 'darwin') {
+    settingsWindow.setVibrancy('under-window')
+  }
+
+  // 窗口ready后设置透明背景
   settingsWindow.on('ready-to-show', () => {
+    settingsWindow.setBackgroundColor('#00000000')
     settingsWindow.show()
-    settingsWindow.focus() // 确保窗口获得焦点
+    settingsWindow.focus()
   })
 
   settingsWindow.webContents.setWindowOpenHandler((details) => {

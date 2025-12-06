@@ -144,36 +144,41 @@ html, body {
 <style scoped>
 /* --- 宇宙背景层 (Universe) --- */
 .universe {
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100vw;
   height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: transparent; 
+  background: transparent;
+  overflow: hidden; /* 隐藏溢出，确保圆角边界清晰 */
 }
 
-/* --- 核心：液态玻璃卡片 (Liquid Card) - macOS 风格 --- */
+/* --- 核心：液态玻璃卡片 (Liquid Card) - macOS 风格，配合原生模糊 --- */
 .liquid-card {
-  position: relative; /* 为调整大小手柄定位 */
-  width: 100vw; /* 完全匹配窗口宽度 */
-  height: 100vh; /* 完全匹配窗口高度 */
-  margin: 0; /* 移除所有边距 */
-  backdrop-filter: blur(60px) saturate(150%); 
-  -webkit-backdrop-filter: blur(60px) saturate(150%);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   
-  border-radius: 24px; /* 保持圆角 */
-  /* 移除边框 */
-  border: none;
+  /* 增强背景对比度 - 配合原生 vibrancy/acrylic */
+  background: rgba(240, 240, 245, 0.75); /* 提高不透明度以增强可见度 */
+  /* CSS 模糊效果 */
+  backdrop-filter: blur(40px) saturate(150%); 
+  -webkit-backdrop-filter: blur(40px) saturate(150%);
   
-  /* 调整后的阴影：更细、更深 */
+  border-radius: 24px; /* macOS 标准圆角 */
+  
+  /* 更明显的边框和阴影 */
+  border: 1px solid rgba(0, 0, 0, 0.08);
   box-shadow: 
-    0 8px 24px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    0 0 0 1px rgba(0, 0, 0, 0.06),    /* 细边框 */
+    0 12px 48px rgba(0, 0, 0, 0.18),  /* 加强主阴影 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.7); /* 增强顶部高光 */
   
   display: flex;
   flex-direction: column;
-  padding: 0; /* 移除 padding，由子元素自己控制 */
+  padding: 0;
   color: #1d1d1f;
   transition: background 0.3s ease;
   overflow: hidden; /* 确保内容不超出圆角 */

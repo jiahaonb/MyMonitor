@@ -193,34 +193,47 @@ html, body {
   transform: translateY(15px) scale(0.96);
 }
 
-/* 外层包装，确保完全透明 */
+/* 外层包装，确保完全透明，无边距 */
 .quick-panel-wrapper {
-  width: 100%;
-  height: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
   background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
+  overflow: hidden; /* 确保圆角边界清晰 */
 }
 
+/* macOS 风格快速面板 - 配合原生模糊效果 */
 .quick-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  /* 玻璃拟态背景 */
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
-  border-radius: 18px;
+  
+  /* 增强背景对比度 - 配合原生 vibrancy/acrylic */
+  background: rgba(238, 238, 242, 0.8); /* 提高不透明度 */
+  /* CSS 模糊效果 */
+  backdrop-filter: blur(40px) saturate(160%);
+  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  
+  border-radius: 16px; /* 快速面板使用较小圆角 */
   padding: 16px;
   display: flex;
   flex-direction: column;
   color: #1d1d1f;
-  /* 仅保留内部高光，移除外部阴影 */
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  
+  /* 增强边框和阴影以提高可见度 */
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 
+    0 0 0 1px rgba(0, 0, 0, 0.08),   /* 细边框 */
+    0 8px 24px rgba(0, 0, 0, 0.2),   /* 外阴影加强 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.8); /* 顶部高光 */
+  
   transform-origin: bottom center;
 }
+
 
 .panel-header {
   margin-bottom: 12px;
@@ -385,10 +398,13 @@ html, body {
 /* 暗色模式适配 */
 @media (prefers-color-scheme: dark) {
   .quick-panel {
-    background: rgba(40, 40, 45, 0.7);
+    background: rgba(30, 30, 35, 0.5); /* 更暗的半透明背景 */
     color: #fff;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.05);
+    box-shadow: 
+      0 0 0 0.5px rgba(255, 255, 255, 0.1),
+      0 4px 12px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.08);
   }
   
   .mini-btn {
