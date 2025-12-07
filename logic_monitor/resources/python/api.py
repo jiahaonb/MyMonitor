@@ -121,24 +121,48 @@ def set_input(monitor_index, source):
     """设置输入源
     source 可以是：
     - 字符串：预定义的输入源名称（如 "HDMI1"）
-    - 整数：VCP 代码（如 16, 17, 18）
+    - 整数：VCP 代码（如 6, 7, 15, 16, 17, 18, etc.）
+    
+    返回: (success: bool, error_msg: str)
     """
     monitors = get_monitors()
-    if monitor_index < len(monitors):
-        with monitors[monitor_index] as m:
-            try:
-                if isinstance(source, str) and source in INPUT_SOURCES:
-                    # 使用预定义的输入源名称
-                    m.set_input_source(source)
-                    return True
-                elif isinstance(source, (int, str)):
-                    # 直接使用 VCP 代码
-                    vcp_code = int(source) if isinstance(source, str) else source
-                    m.set_vcp_feature(VCP_CODES['INPUT_SOURCE'], vcp_code)
-                    return True
-            except Exception as e:
-                return False
-    return False
+    if monitor_index >= len(monitors):
+        error_msg = f"Invalid monitor index: {monitor_index}"
+        sys.stderr.write(f"[set_input] {error_msg}\n")
+        return (False, error_msg)
+    
+    with monitors[monitor_index] as m:
+        try:
+            sys.stderr.write(f"[set_input] Monitor {monitor_index}, Source: {source}, Type: {type(source)}\n")
+            
+            if isinstance(source, str) and source in INPUT_SOURCES:
+                # 使用预定义的输入源名称
+                sys.stderr.write(f"[set_input] Using predefined source name: {source}\n")
+                m.set_input_source(source)
+                sys.stderr.write(f"[set_input] Successfully set input source using name\n")
+                return (True, None)
+            elif isinstance(source, (int, str)):
+                # 直接使用 VCP 代码
+                vcp_code = int(source) if isinstance(source, str) else source
+                sys.stderr.write(f"[set_input] Setting VCP 0x{VCP_CODES['INPUT_SOURCE']:02X} to value {vcp_code}\n")
+                
+                # 🔥 关键修复：使用 monitor.vcp.set_vcp_feature() 而不是 monitor.set_vcp_feature()
+                m.vcp.set_vcp_feature(VCP_CODES['INPUT_SOURCE'], vcp_code)
+                
+                sys.stderr.write(f"[set_input] Successfully set VCP feature\n")
+                return (True, None)
+            else:
+                error_msg = f"Invalid source type: {type(source)}"
+                sys.stderr.write(f"[set_input] {error_msg}\n")
+                return (False, error_msg)
+        except Exception as e:
+            error_msg = f"Exception: {str(e)}"
+            sys.stderr.write(f"[set_input] {error_msg}\n")
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            return (False, error_msg)
+
+
 
 def set_power(monitor_index, power_mode):
     """设置显示器电源状态
@@ -226,8 +250,12 @@ if __name__ == "__main__":
         elif args[0] == "set_input" and len(args) >= 3:
             idx = int(args[1])
             source = args[2]
-            success = set_input(idx, source)
-            result = {"status": "success", "data": success}
+            # set_input 现在返回 (success, error_msg)
+            success, error_msg = set_input(idx, source)
+            if success:
+                result = {"status": "success", "data": True}
+            else:
+                result = {"status": "error", "data": False, "message": error_msg or "Unknown error"}
 
         elif args[0] == "set_power" and len(args) >= 3:
             idx = int(args[1])

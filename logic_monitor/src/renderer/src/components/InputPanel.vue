@@ -112,9 +112,18 @@ const switchToInput = async (code) => {
     if (monitor) {
       const result = await window.api.setInput(currentMonitorIndex.value, code)
       console.log('切换输入源结果:', result)
+      
+      if (result && result.status === 'success' && result.data === true) {
+        alert(`输入源切换成功！\n显示器: ${monitor.name}\n输入源代码: ${code}\n\n显示器正在切换输入源，请稍候几秒钟...`)
+      } else {
+        // 显示详细的错误信息
+        const errorMsg = result?.message || '未知错误'
+        alert(`输入源切换失败！\n显示器: ${monitor.name}\n输入源代码: ${code}\n\n错误详情：${errorMsg}\n\n可能原因：\n1. 该显示器不支持此输入源代码\n2. 输入源代码不正确\n3. DDC/CI 通信失败\n\n请检查VCP代码是否正确，或查看"说明"页面中该显示器支持的VCP代码。`)
+      }
     }
   } catch (err) {
     console.error('切换输入源失败:', err)
+    alert(`切换输入源时发生错误：\n${err.message || err}\n\n请检查：\n1. 显示器是否支持DDC/CI\n2. Python环境是否正常\n3. monitorcontrol库是否已安装`)
   } finally {
     loading.value = false
   }
