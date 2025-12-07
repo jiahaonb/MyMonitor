@@ -15,10 +15,17 @@ const api = {
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
   getConfigPath: () => ipcRenderer.invoke('get-config-path'),
 
+  // 刷新标志管理
+  checkNeedsRefresh: () => ipcRenderer.invoke('check-needs-refresh'),
+  resetRefreshFlag: () => ipcRenderer.invoke('reset-refresh-flag'),
+
   // 窗口控制
   windowMinimize: () => ipcRenderer.send('window-minimize'),
   windowToggleAlwaysOnTop: (flag) => ipcRenderer.send('window-toggle-always-on-top', flag),
-  windowClose: () => ipcRenderer.send('window-close')
+  windowClose: () => ipcRenderer.send('window-close'),
+  windowResizeStart: (direction) => ipcRenderer.send('window-resize-start', direction),
+  windowResizeStop: () => ipcRenderer.send('window-resize-stop'),
+  windowToggleMaximize: () => ipcRenderer.send('window-toggle-maximize')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

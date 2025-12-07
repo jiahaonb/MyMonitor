@@ -9,6 +9,7 @@ let quickPanel = null // 快捷面板窗口
 let settingsWindow = null // 设置窗口
 let tray = null // 托盘
 let lastHideTime = 0 // 上次隐藏时间
+let needsMonitorRefresh = 0 // 输入源切换后需要刷新显示器列表的标志 (0=不需要, 1=需要)
 
 // 配置文件路径
 const configPath = join(app.getPath('userData'), 'config.json')
@@ -85,8 +86,8 @@ function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
     width: 850,
     height: 620,
-    minWidth: 750,
-    minHeight: 550,
+    minWidth: 850,
+    minHeight: 620,
     show: false,
     frame: false, // 无边框
     transparent: true,
@@ -231,6 +232,16 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.on('window-toggle-maximize', () => {
+    if (settingsWindow) {
+      if (settingsWindow.isMaximized()) {
+        settingsWindow.unmaximize()
+      } else {
+        settingsWindow.maximize()
+      }
+    }
+  })
+
   // 拦截关闭操作，先播放动画
   ipcMain.on('window-close', () => {
     if (settingsWindow) {
@@ -259,6 +270,8 @@ app.whenReady().then(() => {
 
     const startCursor = screen.getCursorScreenPoint()
     const startBounds = win.getBounds()
+    const minWidth = 850
+    const minHeight = 620
 
     // 清除旧的定时器
     if (resizeInterval) clearInterval(resizeInterval)
@@ -270,26 +283,45 @@ app.whenReady().then(() => {
 
       let newBounds = { ...startBounds }
 
-      if (direction.includes('right')) newBounds.width += deltaX
-      if (direction.includes('left')) {
-        newBounds.x += deltaX
-        newBounds.width -= deltaX
-      }
-      if (direction.includes('bottom')) newBounds.height += deltaY
-      if (direction.includes('top')) {
-        newBounds.y += deltaY
-        newBounds.height -= deltaY
+      // 处理右边调整
+      if (direction.includes('right')) {
+        newBounds.width = Math.max(minWidth, startBounds.width + deltaX)
       }
 
-      // 最小尺寸限制（保持现有最小值，移除最大值限制以允许无限放大）
-      if (newBounds.width < 750) newBounds.width = 750
-      if (newBounds.height < 550) newBounds.height = 550
+      // 处理左边调整（需要同时调整位置和宽度）
+      if (direction.includes('left')) {
+        const potentialWidth = startBounds.width - deltaX
+        if (potentialWidth >= minWidth) {
+          // 只有在不会小于最小宽度时才移动位置
+          newBounds.x = startBounds.x + deltaX
+          newBounds.width = potentialWidth
+        } else {
+          // 达到最小宽度，锁定在最小宽度，调整x位置使其保持在右边缘
+          newBounds.width = minWidth
+          newBounds.x = startBounds.x + startBounds.width - minWidth
+        }
+      }
+
+      // 处理底部调整
+      if (direction.includes('bottom')) {
+        newBounds.height = Math.max(minHeight, startBounds.height + deltaY)
+      }
+
+      // 处理顶部调整（需要同时调整位置和高度）
+      if (direction.includes('top')) {
+        const potentialHeight = startBounds.height - deltaY
+        if (potentialHeight >= minHeight) {
+          // 只有在不会小于最小高度时才移动位置
+          newBounds.y = startBounds.y + deltaY
+          newBounds.height = potentialHeight
+        } else {
+          // 达到最小高度，锁定在最小高度，调整y位置使其保持在底边缘
+          newBounds.height = minHeight
+          newBounds.y = startBounds.y + startBounds.height - minHeight
+        }
+      }
 
       win.setBounds(newBounds)
-
-      // 简单的鼠标释放检测（不完美，但能用）
-      // 理想情况应该使用全局鼠标钩子，但这里用简单的轮询检测鼠标左键状态比较复杂
-      // 替代方案：前端监听 mouseup 发送停止指令
     }, 1000 / 60) // 60fps
   })
 
@@ -373,6 +405,8 @@ ipcMain.handle('set-brightness', async (event, index, value) => {
 });
 
 ipcMain.handle('set-input', async (event, index, source) => {
+  // 切换输入源后，设置需要刷新标志
+  needsMonitorRefresh = 1;
   return await runPython(['set_input', index, source]);
 });
 
@@ -382,4 +416,15 @@ ipcMain.handle('get-supported-features', async (event, index) => {
 
 ipcMain.handle('set-power', async (event, index, mode) => {
   return await runPython(['set_power', index, mode]);
+});
+
+// 检查是否需要刷新显示器列表
+ipcMain.handle('check-needs-refresh', async () => {
+  return needsMonitorRefresh;
+});
+
+// 重置刷新标志
+ipcMain.handle('reset-refresh-flag', async () => {
+  needsMonitorRefresh = 0;
+  return true;
 });

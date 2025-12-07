@@ -117,13 +117,25 @@ def set_brightness(monitor_index, value):
             return True
     return False
 
-def set_input(monitor_index, source_name):
+def set_input(monitor_index, source):
+    """设置输入源
+    source 可以是：
+    - 字符串：预定义的输入源名称（如 "HDMI1"）
+    - 整数：VCP 代码（如 16, 17, 18）
+    """
     monitors = get_monitors()
-    if monitor_index < len(monitors) and source_name in INPUT_SOURCES:
+    if monitor_index < len(monitors):
         with monitors[monitor_index] as m:
             try:
-                m.set_input_source(source_name)
-                return True
+                if isinstance(source, str) and source in INPUT_SOURCES:
+                    # 使用预定义的输入源名称
+                    m.set_input_source(source)
+                    return True
+                elif isinstance(source, (int, str)):
+                    # 直接使用 VCP 代码
+                    vcp_code = int(source) if isinstance(source, str) else source
+                    m.set_vcp_feature(VCP_CODES['INPUT_SOURCE'], vcp_code)
+                    return True
             except Exception as e:
                 return False
     return False

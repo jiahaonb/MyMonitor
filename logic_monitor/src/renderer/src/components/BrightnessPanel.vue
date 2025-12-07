@@ -43,8 +43,19 @@ const onSliderInput = (index, value) => {
   debouncedSetBrightness(index, value)
 }
 
-onMounted(() => {
-  fetchMonitors()
+onMounted(async () => {
+  // 检查是否需要刷新显示器列表
+  const needsRefresh = await window.api.checkNeedsRefresh()
+  
+  if (needsRefresh === 1) {
+    // 需要刷新：切换了输入源
+    await fetchMonitors()
+    // 重置刷新标志
+    await window.api.resetRefreshFlag()
+  } else {
+    // 总是加载一次（设置窗口打开时）
+    await fetchMonitors()
+  }
 })
 </script>
 
