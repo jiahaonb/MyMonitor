@@ -19,9 +19,6 @@ const api = {
   checkNeedsRefresh: () => ipcRenderer.invoke('check-needs-refresh'),
   resetRefreshFlag: () => ipcRenderer.invoke('reset-refresh-flag'),
 
-  // 调试日志
-  debugLog: (...args) => ipcRenderer.send('debug-log', ...args),
-
   // 窗口控制
   windowMinimize: () => ipcRenderer.send('window-minimize'),
   windowToggleAlwaysOnTop: (flag) => ipcRenderer.send('window-toggle-always-on-top', flag),
