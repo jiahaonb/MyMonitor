@@ -208,12 +208,18 @@ app.whenReady().then(() => {
 
   ipcMain.on('ping', () => console.log('pong'))
 
+  // 调试日志 IPC 处理 - 渲染进程日志输出到终端
+  ipcMain.on('debug-log', (event, ...args) => {
+    console.log('[RENDERER]', ...args)
+  })
+
   // 配置文件 IPC 处理
   ipcMain.handle('get-config', () => {
     return loadConfig()
   })
 
   ipcMain.handle('save-config', (event, config) => {
+    console.log('📝 [MAIN] 收到保存配置请求:', JSON.stringify(config, null, 2))
     return saveConfig(config)
   })
 

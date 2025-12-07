@@ -54,34 +54,96 @@ const loadInputSourcesForCurrentMonitor = async () => {
   const monitorName = getCurrentMonitorName()
   const config = configManager.getAll()
   
+  console.log('🔍 [InputPanel] 加载配置 - 显示器名称:', monitorName)
+  console.log('🔍 [InputPanel] 当前完整配置:', JSON.stringify(config, null, 2))
+  
   // 配置存储格式：monitorInputSources: { "P27H2T": [...], "Monitor 2": [...] }
   if (config.monitorInputSources && config.monitorInputSources[monitorName]) {
     inputSources.value = config.monitorInputSources[monitorName]
+    console.log('✅ [InputPanel] 已加载显示器配置:', inputSources.value)
   } else {
     // 使用默认值
     inputSources.value = [
-      { name: 'HDMI', code: 22 },
+      { name: 'HDMI', code: 16 },
       { name: 'DP', code: 17 },
       { name: 'USB-C', code: 18 }
     ]
+    console.log('⚠️ [InputPanel] 未找到配置，使用默认值')
   }
 }
 
 // 保存当前显示器的输入源配置
 const saveInputSources = async () => {
-  const monitorName = getCurrentMonitorName()
-  const config = configManager.getAll()
-  
-  // 确保 monitorInputSources 对象存在
-  if (!config.monitorInputSources) {
-    config.monitorInputSources = {}
+  const log = (...args) => {
+    console.log(...args)
+    if (window.api?.debugLog) {
+      window.api.debugLog(...args)
+    }
   }
   
-  // 保存当前显示器的输入源配置
-  config.monitorInputSources[monitorName] = inputSources.value
+  log('\n========================================')
+  log('🔥🔥🔥 [InputPanel] 保存输入源被调用！！！')
+  log('========================================\n')
   
-  // 使用 configManager.set 保存，与透明度保存方式一致
-  await configManager.set('monitorInputSources', config.monitorInputSources)
+  const monitorName = getCurrentMonitorName()
+  
+  log('💾 [InputPanel] 准备保存配置')
+  log('💾 [InputPanel] 显示器名称:', monitorName)
+  log('💾 [InputPanel] 输入源数据:', JSON.stringify(inputSources.value, null, 2))
+  
+  // 检查显示器名称是否有效
+  if (!monitorName || monitorName === 'Unknown') {
+    log('\n❌❌❌ [InputPanel] 无效的显示器名称，无法保存配置！')
+    log('显示器名称为:', monitorName)
+    log('当前monitors列表:', monitors.value)
+    alert('错误：无法获取显示器名称，请刷新显示器列表后重试')
+    return
+  }
+  
+  // 获取当前配置的引用（注意：这是副本）
+  const currentConfig = configManager.getAll()
+  
+  log('💾 [InputPanel] 当前配置（保存前）:', JSON.stringify(currentConfig, null, 2))
+  
+  // ⚠️ 关键修复：检查 monitorInputSources 是否为数组（错误格式）
+  // 如果是数组，强制重置为对象
+  if (Array.isArray(currentConfig.monitorInputSources)) {
+    log('\n⚠️⚠️⚠️ [InputPanel] 检测到错误格式（数组），正在重置为对象格式')
+    currentConfig.monitorInputSources = {}
+  }
+  
+  // 确保 monitorInputSources 对象存在
+  if (!currentConfig.monitorInputSources || typeof currentConfig.monitorInputSources !== 'object') {
+    log('[InputPanel] 初始化 monitorInputSources 对象')
+    currentConfig.monitorInputSources = {}
+  }
+  
+  // 更新当前显示器的输入源配置
+  currentConfig.monitorInputSources[monitorName] = [...inputSources.value]
+  
+  log('\n💾 [InputPanel] 完整配置对象（准备保存）:')
+  log(JSON.stringify(currentConfig, null, 2))
+  log('\n特别注意 monitorInputSources:', JSON.stringify(currentConfig.monitorInputSources, null, 2))
+  
+  // 🔥 测试标记：设置 version = 2
+  log('\n🔥🔥🔥 [InputPanel] 设置测试标记 version = "2"')
+  await configManager.set('version', '2')
+  
+  // 重要：保存整个 monitorInputSources 对象
+  log('\n💾 [InputPanel] 开始保存 monitorInputSources...')
+  log('要保存的值:', JSON.stringify(currentConfig.monitorInputSources, null, 2))
+  await configManager.set('monitorInputSources', currentConfig.monitorInputSources)
+  
+  log('\n✅✅✅ [InputPanel] 配置保存完成！')
+  
+  // 验证保存结果
+  const verifyConfig = configManager.getAll()
+  log('\n🔍 [InputPanel] 验证保存结果:')
+  log('version:', verifyConfig.version)
+  log('monitorInputSources:', JSON.stringify(verifyConfig.monitorInputSources, null, 2))
+  log('\n========================================')
+  log('保存流程结束')
+  log('========================================\n')
 }
 
 // 监听显示器切换，加载对应的输入源配置
@@ -165,6 +227,7 @@ const deleteSource = async (index) => {
 }
 
 onMounted(async () => {
+  await configManager.loadConfig()
   // 先加载显示器列表，然后自动加载对应的输入源配置
   await fetchMonitors()
 })

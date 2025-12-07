@@ -5,9 +5,12 @@ import { configManager } from '../utils/config.js'
 const panelOpacity = ref(0.9)
 const version = ref('1.0')
 
-onMounted(() => {
+onMounted(async () => {
+  await configManager.loadConfig()
   const config = configManager.getAll()
-  panelOpacity.value = config.panelOpacity
+  if (config.panelOpacity !== undefined) {
+      panelOpacity.value = config.panelOpacity
+  }
   version.value = config.version
 })
 

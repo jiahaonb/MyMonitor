@@ -12,9 +12,11 @@ class FileConfigManager {
     async loadConfig() {
         try {
             const result = await window.api.getConfig()
+            console.log('📂 [ConfigManager] 从文件加载配置:', result)
             if (result) {
                 this.config = { ...this.defaultConfig, ...result }
             }
+            console.log('📂 [ConfigManager] 合并后的config:', this.config)
         } catch (e) {
             console.error('加载配置失败:', e)
             this.config = { ...this.defaultConfig }
@@ -24,9 +26,30 @@ class FileConfigManager {
 
     async saveConfig() {
         try {
-            await window.api.saveConfig(this.config)
+            const configStr = JSON.stringify(this.config, null, 2)
+            console.log('💾 [ConfigManager] 准备保存配置到文件:', configStr)
+            if (window.api?.debugLog) {
+                window.api.debugLog('💾 [ConfigManager] 准备保存配置到文件:', configStr)
+            }
+
+            // 🔥 关键修复：将 this.config 转换为纯 JSON 对象，避免 IPC 序列化错误
+            // "An object could not be cloned" 错误是因为 Electron IPC 无法序列化某些对象
+            const pureConfig = JSON.parse(JSON.stringify(this.config))
+
+            if (window.api?.debugLog) {
+                window.api.debugLog('💾 [ConfigManager] 转换后的纯JSON对象:', JSON.stringify(pureConfig))
+            }
+
+            await window.api.saveConfig(pureConfig)
+            console.log('✅ [ConfigManager] 配置保存成功')
+            if (window.api?.debugLog) {
+                window.api.debugLog('✅ [ConfigManager] 配置保存成功')
+            }
         } catch (e) {
             console.error('保存配置失败:', e)
+            if (window.api?.debugLog) {
+                window.api.debugLog('❌ [ConfigManager] 保存配置失败:', e.toString())
+            }
         }
     }
 
@@ -35,7 +58,15 @@ class FileConfigManager {
     }
 
     async set(key, value) {
+        console.log(`🔧 [ConfigManager] 设置配置 ${key}:`, value)
+        if (window.api?.debugLog) {
+            window.api.debugLog(`🔧 [ConfigManager] 设置配置 ${key}:`, JSON.stringify(value))
+        }
         this.config[key] = value
+        console.log('🔧 [ConfigManager] 更新后的完整config:', this.config)
+        if (window.api?.debugLog) {
+            window.api.debugLog('🔧 [ConfigManager] 更新后的完整config:', JSON.stringify(this.config))
+        }
         await this.saveConfig()
     }
 
